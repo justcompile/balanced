@@ -1,17 +1,13 @@
 package k8s
 
 import (
-	"context"
-	"flag"
 	"fmt"
-	"path/filepath"
 	"time"
 
-	"k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	kubeinformers "k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/clientcmd"
-	"k8s.io/client-go/util/homedir"
 	//
 	// Uncomment to load all auth plugins
 	// _ "k8s.io/client-go/plugin/pkg/client/auth"
@@ -22,50 +18,73 @@ import (
 	// _ "k8s.io/client-go/plugin/pkg/client/auth/oidc"
 )
 
-func main() {
-	var kubeconfig *string
-	if home := homedir.HomeDir(); home != "" {
-		kubeconfig = flag.String("kubeconfig", filepath.Join(home, ".kube", "config"), "(optional) absolute path to the kubeconfig file")
-	} else {
-		kubeconfig = flag.String("kubeconfig", "", "absolute path to the kubeconfig file")
-	}
-	flag.Parse()
-
-	// use the current context in kubeconfig
-	config, err := clientcmd.BuildConfigFromFlags("", *kubeconfig)
+func NewWatcher(configPath string, opts ...WatchOptions) (*Watcher, error) {
+	config, err := clientcmd.BuildConfigFromFlags("", configPath)
 	if err != nil {
-		panic(err.Error())
+		return nil, err
 	}
 
 	// create the clientset
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
-		panic(err.Error())
+		return nil, err
 	}
-	for {
-		pods, err := clientset.CoreV1().Pods("").List(context.TODO(), metav1.ListOptions{})
-		if err != nil {
-			panic(err.Error())
-		}
-		fmt.Printf("There are %d pods in the cluster\n", len(pods.Items))
 
-		// Examples for error handling:
-		// - Use helper functions like e.g. errors.IsNotFound()
-		// - And/or cast to StatusError and use its properties like e.g. ErrStatus.Message
-		namespace := "default"
-		pod := "example-xxxxx"
-		_, err = clientset.CoreV1().Pods(namespace).Get(context.TODO(), pod, metav1.GetOptions{})
-		if errors.IsNotFound(err) {
-			fmt.Printf("Pod %s in namespace %s not found\n", pod, namespace)
-		} else if statusError, isStatus := err.(*errors.StatusError); isStatus {
-			fmt.Printf("Error getting pod %s in namespace %s: %v\n",
-				pod, namespace, statusError.ErrStatus.Message)
-		} else if err != nil {
-			panic(err.Error())
-		} else {
-			fmt.Printf("Found pod %s in namespace %s\n", pod, namespace)
-		}
-
-		time.Sleep(10 * time.Second)
+	w := &Watcher{
+		clientset: clientset,
 	}
+
+	for _, opt := range opts {
+		opt(w)
+	}
+
+	if w.resyncInterval == nil {
+		defaultInterval := time.Second * 30
+		w.resyncInterval = &defaultInterval
+	}
+
+	return w, nil
+}
+
+type WatchOptions func(*Watcher)
+
+func WithResyncInterval(i time.Duration) WatchOptions {
+	return func(w *Watcher) {
+		w.resyncInterval = &i
+	}
+}
+
+type Watcher struct {
+	clientset      *kubernetes.Clientset
+	resyncInterval *time.Duration
+	informer       kubeinformers.SharedInformerFactory
+	isSetup        bool
+}
+
+func (w *Watcher) Start(stop chan struct{}) {
+	if !w.isSetup {
+		w.setup()
+	}
+
+	w.informer.Start(stop)
+}
+
+func (w *Watcher) setup() {
+	kubeInformerFactory := kubeinformers.NewSharedInformerFactory(w.clientset, *w.resyncInterval)
+	ingressInformer := kubeInformerFactory.Networking().V1().Ingresses().Informer()
+
+	ingressInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc: func(obj interface{}) {
+			fmt.Printf("ingress added: %s \n", obj)
+		},
+		DeleteFunc: func(obj interface{}) {
+			fmt.Printf("ingress deleted: %s \n", obj)
+		},
+		UpdateFunc: func(oldObj, newObj interface{}) {
+			fmt.Printf("ingress changed: %s \n", newObj)
+		},
+	})
+
+	w.informer = kubeInformerFactory
+	w.isSetup = true
 }
