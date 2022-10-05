@@ -1,0 +1,2 @@
+[kubernetes]
+kube-config = "path to config" # omit to use default or config defined in $KUBECONFIG

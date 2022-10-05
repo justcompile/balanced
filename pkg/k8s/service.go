@@ -2,8 +2,13 @@ package k8s
 
 import (
 	"fmt"
+	"k8s.io/client-go/util/homedir"
+	"os"
+	"path/filepath"
 	"time"
 
+	log "github.com/sirupsen/logrus"
+	corev1 "k8s.io/api/core/v1"
 	kubeinformers "k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
@@ -18,8 +23,21 @@ import (
 	// _ "k8s.io/client-go/plugin/pkg/client/auth/oidc"
 )
 
+func kubeconfigPath(path string) string {
+	if path != "" {
+		return path
+	}
+
+	if kubeconfig := os.Getenv("KUBECONFIG"); kubeconfig != "" {
+		return kubeconfig
+	}
+
+	home := homedir.HomeDir()
+	return filepath.Join(home, ".kube", "config")
+}
+
 func NewWatcher(configPath string, opts ...WatchOptions) (*Watcher, error) {
-	config, err := clientcmd.BuildConfigFromFlags("", configPath)
+	config, err := clientcmd.BuildConfigFromFlags("", kubeconfigPath(configPath))
 	if err != nil {
 		return nil, err
 	}
@@ -71,20 +89,44 @@ func (w *Watcher) Start(stop chan struct{}) {
 
 func (w *Watcher) setup() {
 	kubeInformerFactory := kubeinformers.NewSharedInformerFactory(w.clientset, *w.resyncInterval)
-	ingressInformer := kubeInformerFactory.Networking().V1().Ingresses().Informer()
+	ingressInformer := kubeInformerFactory.Core().V1().Endpoints().Informer()
 
 	ingressInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
-			fmt.Printf("ingress added: %s \n", obj)
+			endpoint := obj.(*corev1.Endpoints)
+			if endpoint.Namespace == "default" {
+				fmt.Printf("endpoint added: %s \n", endpoint.Name)
+			}
 		},
 		DeleteFunc: func(obj interface{}) {
-			fmt.Printf("ingress deleted: %s \n", obj)
+			fmt.Printf("endpoint deleted: %s \n", obj)
 		},
 		UpdateFunc: func(oldObj, newObj interface{}) {
-			fmt.Printf("ingress changed: %s \n", newObj)
+			oldEndpoint := oldObj.(*corev1.Endpoints)
+			newEndpoint := newObj.(*corev1.Endpoints)
+			if oldEndpoint.Namespace == "default" {
+				if oldEndpoint.GetResourceVersion() != newEndpoint.GetResourceVersion() {
+					f := log.Fields{
+						"old": w.ipsFromEndpoint(oldEndpoint),
+						"new": w.ipsFromEndpoint(newEndpoint),
+					}
+					log.WithFields(f).Infof("endpoint changed: %s", newEndpoint.Name)
+				}
+			}
 		},
 	})
 
 	w.informer = kubeInformerFactory
 	w.isSetup = true
+}
+
+func (w *Watcher) ipsFromEndpoint(e *corev1.Endpoints) []string {
+	addresses := make([]string, 0)
+	for _, ss := range e.Subsets {
+		for _, a := range ss.Addresses {
+			addresses = append(addresses, a.IP)
+		}
+	}
+
+	return addresses
 }
