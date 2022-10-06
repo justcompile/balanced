@@ -2,14 +2,42 @@ package configuration
 
 import (
 	"github.com/BurntSushi/toml"
+
+	"os"
+	"path/filepath"
+
+	"k8s.io/client-go/util/homedir"
 )
 
 type Config struct {
-	Kubernetes *kubernetes
+	Kubernetes   *KubeConfig
+	LoadBalancer *LoadBalancer
 }
 
-type kubernetes struct {
-	ConfigPath string `toml:"kube-config"`
+type LoadBalancer struct {
+	ConfigDir string `toml:"config-dir"`
+	ReloadCmd string `toml:"reload-cmd"`
+	Template  string `toml:"template"`
+}
+
+type KubeConfig struct {
+	ConfigPath           string   `toml:"kube-config"`
+	ServiceAnnotationKey string   `toml:"service-annotation-key"`
+	WatchedNamespaces    []string `toml:"watch-namespaces"`
+	ExcludedNamespaces   []string `toml:"exclude-namespaces"`
+}
+
+func (k *KubeConfig) GetConfigPath() string {
+	if k.ConfigPath != "" {
+		return k.ConfigPath
+	}
+
+	if kubeconfig := os.Getenv("KUBECONFIG"); kubeconfig != "" {
+		return kubeconfig
+	}
+
+	home := homedir.HomeDir()
+	return filepath.Join(home, ".kube", "config")
 }
 
 func New() (*Config, error) {

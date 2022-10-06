@@ -3,11 +3,14 @@ package cmd
 import (
 	"balanced/pkg/configuration"
 	"balanced/pkg/k8s"
-	log "github.com/sirupsen/logrus"
-	"github.com/spf13/cobra"
+	"balanced/pkg/loadbalancer"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
+
+	log "github.com/sirupsen/logrus"
+	"github.com/spf13/cobra"
 )
 
 var root = &cobra.Command{
@@ -19,7 +22,12 @@ var root = &cobra.Command{
 			log.Fatal(err)
 		}
 
-		w, err := k8s.NewWatcher(cfg.Kubernetes.ConfigPath)
+		lb, lbErr := loadbalancer.NewUpdater(cfg.LoadBalancer)
+		if lbErr != nil {
+			log.Fatal(lbErr)
+		}
+
+		w, err := k8s.NewWatcher(cfg.Kubernetes)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -31,14 +39,19 @@ var root = &cobra.Command{
 		stop := make(chan struct{})
 		defer close(stop)
 
-		w.Start(stop)
-		log.Println("watching...")
+		// Start watching for Endpoint Changes
+		changes := w.Start(stop)
+
+		// Start update process listening to changes which come in
+		go lb.Start(changes)
 
 		select {
 		case <-cmd.Context().Done():
 		case <-sig:
+			close(changes)
 			stop <- struct{}{}
 			log.Println("stopping")
+			time.Sleep(time.Second)
 		}
 	},
 }
