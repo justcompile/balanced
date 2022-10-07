@@ -1,17 +1,19 @@
-# This is an example .goreleaser.yml file with some sensible defaults.
-# Make sure to check the documentation at https://goreleaser.com
 before:
   hooks:
-    # You may remove this if you don't use go modules.
     - go mod tidy
-    # you may remove this if you don't need go generate
-    - go generate ./...
 builds:
   - env:
       - CGO_ENABLED=0
     goos:
       - linux
       - darwin
+    binary: "{{ .ProjectName }}"
+dockers:
+  - image_templates:
+      - "justcompile/cloudflare-dns-updater:{{ .Tag }}"
+      - "justcompile/cloudflare-dns-updater:v{{ .Major }}"
+      - "justcompile/cloudflare-dns-updater:v{{ .Major }}.{{ .Minor }}"
+      - "justcompile/cloudflare-dns-updater:latest"
 archives:
   - replacements:
       darwin: Darwin

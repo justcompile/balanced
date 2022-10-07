@@ -1,0 +1,22 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: load-balancer
+rules:
+- apiGroups: [""]
+  resources: ["services", "endpoints"]
+  verbs: ["get", "watch", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: load-balancer
+subjects:
+- kind: Group
+  name: load-balancer-controllers
+  apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: ClusterRole
+  name: load-balancer
+  apiGroup: rbac.authorization.k8s.io
+

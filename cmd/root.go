@@ -17,7 +17,8 @@ var root = &cobra.Command{
 	Use:   "balanced",
 	Short: "balanced .....",
 	Run: func(cmd *cobra.Command, args []string) {
-		cfg, err := configuration.New()
+		cfgPath, _ := cmd.Flags().GetString("config")
+		cfg, err := configuration.New(cfgPath)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -57,6 +58,8 @@ var root = &cobra.Command{
 }
 
 func Execute() {
+	root.Flags().StringP("config", "c", "./balanced.toml", "Path to config file")
+
 	if err := root.Execute(); err != nil {
 		log.Fatal(err)
 	}

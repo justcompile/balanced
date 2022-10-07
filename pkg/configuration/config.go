@@ -40,9 +40,9 @@ func (k *KubeConfig) GetConfigPath() string {
 	return filepath.Join(home, ".kube", "config")
 }
 
-func New() (*Config, error) {
+func New(path string) (*Config, error) {
 	var cfg Config
-	_, err := toml.DecodeFile("balanced.toml", &cfg)
+	_, err := toml.DecodeFile(path, &cfg)
 	if err != nil {
 		return nil, err
 	}
