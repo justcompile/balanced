@@ -3,10 +3,8 @@ Description=Balanced Process
 After=syslog.target network.target
 
 [Service]
-User=haproxy
-Group=haproxy
 Type=forking
-ExecStart=/usr/local/bin/balanced -c /opt/balanced/balanced.toml
+ExecStart=/usr/local/bin/balanced -c /etc/balanced/balanced.toml
 KillMode=control-group
 PIDFile=/var/run/balanced.pid
 SyslogIdentifier=balanced
