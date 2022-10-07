@@ -10,15 +10,10 @@ builds:
     binary: "{{ .ProjectName }}"
 dockers:
   - image_templates:
-      - "justcompile/cloudflare-dns-updater:{{ .Tag }}"
-      - "justcompile/cloudflare-dns-updater:v{{ .Major }}"
-      - "justcompile/cloudflare-dns-updater:v{{ .Major }}.{{ .Minor }}"
-      - "justcompile/cloudflare-dns-updater:latest"
-archives:
-  - replacements:
-      darwin: Darwin
-      linux: Linux
-      amd64: x86_64
+      - "justcompile/balanced:{{ .Tag }}"
+      - "justcompile/balanced:v{{ .Major }}"
+      - "justcompile/balanced:v{{ .Major }}.{{ .Minor }}"
+      - "justcompile/balanced:latest"
 checksum:
   name_template: 'checksums.txt'
 snapshot:
