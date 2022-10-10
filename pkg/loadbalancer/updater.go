@@ -36,7 +36,7 @@ func (u *Updater) Start(changes <-chan *types.LoadBalancerUpstreamDefinition) {
 		filename := strings.ReplaceAll(change.Domain, ".", "_") + ".cfg"
 		fullFilePath := filepath.Join(u.cfg.ConfigDir, filename)
 
-		f, fErr := os.OpenFile(fullFilePath, os.O_RDWR, 0644)
+		f, fErr := os.OpenFile(fullFilePath, os.O_RDWR|os.O_CREATE, 0644)
 
 		if fErr != nil {
 			log.Errorf("unable to open %s: %s", fullFilePath, fErr)
