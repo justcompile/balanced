@@ -5,7 +5,14 @@ import (
 	"fmt"
 )
 
+type lookupConfig struct {
+	usePublicIP bool
+	tagKey      string
+	tagValue    string
+}
+
 type Updater interface {
+	GetAddresses() ([]string, error)
 	UpsertRecordSet([]string) error
 }
 

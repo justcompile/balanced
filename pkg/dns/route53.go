@@ -5,28 +5,36 @@ import (
 	"fmt"
 
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/credentials"
+	"github.com/aws/aws-sdk-go/aws/defaults"
 	"github.com/aws/aws-sdk-go/aws/ec2metadata"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/route53"
-	"github.com/hashicorp/go-discover"
 )
 
 type Route53Updater struct {
-	cfg          *configuration.DNS
-	discoverConf *discover.Config
+	cfg            *configuration.DNS
+	instanceLookup *lookupConfig
 }
 
-func (r *Route53Updater) GetDiscoveryQuery() string {
-	return r.discoverConf.String()
+func (r *Route53Updater) GetAddresses() ([]string, error) {
+	config := aws.Config{
+		// Region: &region,
+		Credentials: credentials.NewChainCredentials(
+			[]credentials.Provider{
+				&credentials.EnvProvider{},
+				&credentials.SharedCredentialsProvider{},
+				defaults.RemoteCredProvider(*(defaults.Config()), defaults.Handlers()),
+			},
+		),
+	}
 }
 func (r *Route53Updater) UpsertRecordSet(domains []string) error {
 	if len(domains) == 0 {
 		return nil
 	}
 
-	d := &discover.Discover{}
-
-	addresses, err := d.Addrs(r.GetDiscoveryQuery(), nil)
+	addresses, err := discovery.Addrs(r.GetDiscoveryQuery(), nil)
 	if err != nil {
 		return err
 	}
@@ -70,30 +78,17 @@ func NewRoute53Updater(cfg *configuration.DNS) (*Route53Updater, error) {
 	}
 
 	ec2meta := ec2metadata.New(session.New())
-	identity, err := ec2meta.GetInstanceIdentityDocument()
-	if err != nil {
-		return nil, fmt.Errorf("route-53: GetInstanceIdentityDocument failed: %s", err)
-	}
-
 	tagValue, err := ec2meta.GetMetadata("tags/instance/" + cfg.TagKey)
 	if err != nil {
 		return nil, fmt.Errorf("route-53: retrieving instance tags failed: %s", err)
 	}
 
-	discoverConf := discover.Config{
-		"provider":  "aws",
-		"region":    identity.Region,
-		"tag_key":   cfg.TagKey,
-		"tag_value": tagValue,
-	}
-
-	// defaults to private_v4 so only set if we want to override default behaviour
-	if cfg.UsePublicAddress {
-		discoverConf["addr_type"] = "public_v4"
-	}
-
 	return &Route53Updater{
-		cfg:          cfg,
-		discoverConf: &discoverConf,
+		cfg: cfg,
+		instanceLookup: &lookupConfig{
+			usePublicIP: cfg.UsePublicAddress,
+			tagKey:      cfg.TagKey,
+			tagValue:    tagValue,
+		},
 	}, nil
 }
