@@ -12,6 +12,20 @@ import (
 type Config struct {
 	Kubernetes   *KubeConfig
 	LoadBalancer *LoadBalancer
+	DNS          DNS
+}
+
+type DNS struct {
+	Enabled          bool   `toml:"enabled"`
+	TagKey           string `toml:"discovery-tag"`
+	UsePublicAddress bool   `toml:"use-public-address"`
+	Route53          *Route53
+}
+
+type Route53 struct {
+	HostedZoneId string `toml:"hosted-zone-id"`
+	Type         string `toml:"record-type"`
+	TTL          int64  `toml:"ttl"`
 }
 
 type LoadBalancer struct {

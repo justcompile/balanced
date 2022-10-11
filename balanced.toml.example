@@ -1,2 +1,26 @@
 [kubernetes]
 kube-config = "path to config" # omit to use default or config defined in $KUBECONFIG
+watch-namespaces = ["..."] # omit to watch all namespaces
+exclude-namespaces = ["..."]
+service-annotation-key = "k8s.justcompile.io/domain" # annotation key containing the domain to reference
+
+[loadbalancer]
+config-dir = "" # dir to store load balancer configuration
+reload-cmd = "systemctl reload haproxy" # command to reload loadbalancer configuration
+template = """
+backend {{.Domain}}
+  balance roundrobin
+  {{range .Servers -}}
+  server {{.Id}} {{.IPAddress}}:{{.Port}} check check-ssl
+  {{end}}
+"""
+
+[dns]
+enabled = true|false
+discovery-tag = "" # tag key used to lookup other cluster members
+use-public-address = true|false
+
+[dns.route53]
+hosted-zone-id = ""
+type = "A"
+ttl = 60
