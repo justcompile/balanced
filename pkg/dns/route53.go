@@ -2,11 +2,10 @@ package dns
 
 import (
 	"balanced/pkg/configuration"
+	"balanced/pkg/discovery"
 	"fmt"
 
 	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/credentials"
-	"github.com/aws/aws-sdk-go/aws/defaults"
 	"github.com/aws/aws-sdk-go/aws/ec2metadata"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/route53"
@@ -14,27 +13,15 @@ import (
 
 type Route53Updater struct {
 	cfg            *configuration.DNS
-	instanceLookup *lookupConfig
+	instanceLookup *discovery.LookupConfig
 }
 
-func (r *Route53Updater) GetAddresses() ([]string, error) {
-	config := aws.Config{
-		// Region: &region,
-		Credentials: credentials.NewChainCredentials(
-			[]credentials.Provider{
-				&credentials.EnvProvider{},
-				&credentials.SharedCredentialsProvider{},
-				defaults.RemoteCredProvider(*(defaults.Config()), defaults.Handlers()),
-			},
-		),
-	}
-}
 func (r *Route53Updater) UpsertRecordSet(domains []string) error {
 	if len(domains) == 0 {
 		return nil
 	}
 
-	addresses, err := discovery.Addrs(r.GetDiscoveryQuery(), nil)
+	addresses, err := discovery.AWSAddrs(r.instanceLookup)
 	if err != nil {
 		return err
 	}
@@ -85,10 +72,10 @@ func NewRoute53Updater(cfg *configuration.DNS) (*Route53Updater, error) {
 
 	return &Route53Updater{
 		cfg: cfg,
-		instanceLookup: &lookupConfig{
-			usePublicIP: cfg.UsePublicAddress,
-			tagKey:      cfg.TagKey,
-			tagValue:    tagValue,
+		instanceLookup: &discovery.LookupConfig{
+			TagKey:      cfg.TagKey,
+			TagValue:    tagValue,
+			UsePublicIP: cfg.UsePublicAddress,
 		},
 	}, nil
 }

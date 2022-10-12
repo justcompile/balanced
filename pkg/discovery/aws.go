@@ -32,11 +32,11 @@ func AWSAddrs(cfg *LookupConfig) ([]string, error) {
 
 	resp, err := svc.DescribeInstances(&ec2.DescribeInstancesInput{
 		Filters: []*ec2.Filter{
-			&ec2.Filter{
+			{
 				Name:   aws.String("tag:" + cfg.TagKey),
 				Values: []*string{aws.String(cfg.TagValue)},
 			},
-			&ec2.Filter{
+			{
 				Name:   aws.String("instance-state-name"),
 				Values: []*string{aws.String("running")},
 			},
