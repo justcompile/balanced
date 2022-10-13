@@ -1,8 +1,8 @@
 package loadbalancer
 
 import (
+	"balanced/pkg/cloud"
 	"balanced/pkg/configuration"
-	"balanced/pkg/dns"
 	"balanced/pkg/types"
 	"fmt"
 	"os"
@@ -21,18 +21,18 @@ func NewUpdater(cfg *configuration.Config) (*Updater, error) {
 		return nil, err
 	}
 
-	d, err := dns.NewRoute53Updater(&cfg.DNS)
+	p, err := cloud.ProviderFromConfig(&cfg.DNS)
 	if err != nil {
 		return nil, err
 	}
 
-	return &Updater{cfg: cfg.LoadBalancer, d: d, r: r}, nil
+	return &Updater{cfg: cfg, p: p, r: r}, nil
 }
 
 type Updater struct {
-	cfg *configuration.LoadBalancer
+	cfg *configuration.Config
 	r   *Renderer
-	d   dns.Updater
+	p   cloud.CloudProvider
 }
 
 func (u *Updater) Start(changes <-chan *types.LoadBalancerUpstreamDefinition) {
@@ -56,7 +56,7 @@ func (u *Updater) Start(changes <-chan *types.LoadBalancerUpstreamDefinition) {
 			addresses = append(addresses, change.Domain)
 
 		case <-ticker.C:
-			if err := u.d.UpsertRecordSet(addresses); err != nil {
+			if err := u.p.UpsertRecordSet(addresses); err != nil {
 				log.Error(err)
 			}
 			addresses = make([]string, 0)
@@ -66,7 +66,7 @@ func (u *Updater) Start(changes <-chan *types.LoadBalancerUpstreamDefinition) {
 
 func (u *Updater) handleChange(change *types.LoadBalancerUpstreamDefinition) error {
 	filename := strings.ReplaceAll(change.Domain, ".", "_") + ".cfg"
-	fullFilePath := filepath.Join(u.cfg.ConfigDir, filename)
+	fullFilePath := filepath.Join(u.cfg.LoadBalancer.ConfigDir, filename)
 
 	f, fErr := os.OpenFile(fullFilePath, os.O_RDWR|os.O_CREATE, 0644)
 
@@ -79,14 +79,14 @@ func (u *Updater) handleChange(change *types.LoadBalancerUpstreamDefinition) err
 	}
 
 	if reloadErr := u.reloadProcess(); reloadErr != nil {
-		fmt.Errorf("error reloading loadbalancer configuration after update: %s", reloadErr)
+		return fmt.Errorf("error reloading loadbalancer configuration after update: %s", reloadErr)
 	}
 
 	return nil
 }
 
 func (u *Updater) reloadProcess() error {
-	cmdParts, err := shlex.Split(u.cfg.ReloadCmd)
+	cmdParts, err := shlex.Split(u.cfg.LoadBalancer.ReloadCmd)
 	if err != nil {
 		return err
 	}

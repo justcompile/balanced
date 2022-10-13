@@ -15,12 +15,12 @@ type serviceCache struct {
 	cfg           *configuration.KubeConfig
 	clientset     kubernetes.Interface
 	domainMapping map[string]string
-	m             *sync.RWMutex
+	mx            *sync.RWMutex
 }
 
 func (s *serviceCache) lookupDomainForService(ctx context.Context, ns *namespaceNameKey) string {
-	s.m.RLock()
-	defer s.m.RUnlock()
+	s.mx.RLock()
+	defer s.mx.RUnlock()
 	if _, exists := s.domainMapping[ns.String()]; !exists {
 		domain, err := s.getDomainFromServiceAnnotation(ctx, ns)
 		if err != nil {
@@ -53,8 +53,8 @@ func (s *serviceCache) getDomainFromServiceAnnotation(ctx context.Context, ns *n
 }
 
 func (s *serviceCache) removeServiceRecord(ctx context.Context, ns *namespaceNameKey) {
-	s.m.Lock()
-	defer s.m.Unlock()
+	s.mx.Lock()
+	defer s.mx.Unlock()
 
 	delete(s.domainMapping, ns.String())
 }
@@ -64,6 +64,6 @@ func newServiceCache(cfg *configuration.KubeConfig, clientset kubernetes.Interfa
 		cfg:           cfg,
 		clientset:     clientset,
 		domainMapping: make(map[string]string),
-		m:             &sync.RWMutex{},
+		mx:            &sync.RWMutex{},
 	}
 }
