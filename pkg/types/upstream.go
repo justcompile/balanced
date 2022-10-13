@@ -20,6 +20,10 @@ type Server struct {
 }
 
 func LoadBalancerUpstreamDefinitionFromK8sEndpoint(domain string, endpoint *corev1.Endpoints) *LoadBalancerUpstreamDefinition {
+	if endpoint == nil {
+		return nil
+	}
+
 	def := &LoadBalancerUpstreamDefinition{
 		Domain:  domain,
 		Servers: make([]*Server, 0),
@@ -41,6 +45,9 @@ func LoadBalancerUpstreamDefinitionFromK8sEndpoint(domain string, endpoint *core
 }
 
 func SortedIPsFromEndpoint(e *corev1.Endpoints) []net.IP {
+	if e == nil {
+		return nil
+	}
 	addresses := make([]net.IP, 0)
 
 	for _, ss := range e.Subsets {

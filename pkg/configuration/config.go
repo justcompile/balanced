@@ -1,6 +1,8 @@
 package configuration
 
 import (
+	"fmt"
+
 	"github.com/BurntSushi/toml"
 
 	"os"
@@ -58,7 +60,7 @@ func New(path string) (*Config, error) {
 	var cfg Config
 	_, err := toml.DecodeFile(path, &cfg)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("configuration: %s", err)
 	}
 	return &cfg, nil
 }
