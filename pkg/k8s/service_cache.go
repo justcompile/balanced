@@ -13,7 +13,7 @@ import (
 
 type serviceCache struct {
 	cfg           *configuration.KubeConfig
-	clientset     *kubernetes.Clientset
+	clientset     kubernetes.Interface
 	domainMapping map[string]string
 	m             *sync.RWMutex
 }
@@ -59,7 +59,7 @@ func (s *serviceCache) removeServiceRecord(ctx context.Context, ns *namespaceNam
 	delete(s.domainMapping, ns.String())
 }
 
-func newServiceCache(cfg *configuration.KubeConfig, clientset *kubernetes.Clientset) *serviceCache {
+func newServiceCache(cfg *configuration.KubeConfig, clientset kubernetes.Interface) *serviceCache {
 	return &serviceCache{
 		cfg:           cfg,
 		clientset:     clientset,
