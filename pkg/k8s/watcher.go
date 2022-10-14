@@ -72,19 +72,19 @@ type Watcher struct {
 	serviceCache      *serviceCache
 }
 
-func (w *Watcher) Start(stop chan struct{}) chan *types.LoadBalancerUpstreamDefinition {
+func (w *Watcher) Start(stop chan struct{}) chan *types.Change {
 	c := w.setup()
 	w.informer.Start(stop)
 
 	return c
 }
 
-func (w *Watcher) setup() chan *types.LoadBalancerUpstreamDefinition {
+func (w *Watcher) setup() chan *types.Change {
 	kubeInformerFactory := kubeinformers.NewSharedInformerFactory(w.clientset, *w.resyncInterval)
 	endpointsInformer := kubeInformerFactory.Core().V1().Endpoints().Informer()
 	serviceInformer := kubeInformerFactory.Core().V1().Services().Informer()
 
-	c := make(chan *types.LoadBalancerUpstreamDefinition)
+	c := make(chan *types.Change)
 
 	// when a service is updated, this would mean that an annotation may have been added/updated
 	// clear the domain mapping cache to ensure that it can be picked up
@@ -120,7 +120,7 @@ func (w *Watcher) setup() chan *types.LoadBalancerUpstreamDefinition {
 
 			log.Infof("endpoint added: %s", key)
 
-			c <- types.LoadBalancerUpstreamDefinitionFromK8sEndpoint(domain, endpoint)
+			c <- types.NewLoadBalancerDefinitionChange(domain, endpoint)
 		},
 		DeleteFunc: func(obj interface{}) {
 			key := namespacedResourceToKey(obj.(*corev1.Endpoints))
@@ -144,7 +144,7 @@ func (w *Watcher) setup() chan *types.LoadBalancerUpstreamDefinition {
 				if domain == "" {
 					return
 				}
-				c <- types.LoadBalancerUpstreamDefinitionFromK8sEndpoint(domain, newEndpoint)
+				c <- types.NewLoadBalancerDefinitionChange(domain, newEndpoint)
 			}
 		},
 	})

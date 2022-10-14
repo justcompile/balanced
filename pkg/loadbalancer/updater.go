@@ -11,8 +11,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/aws/aws-sdk-go/aws"
 	"github.com/google/shlex"
-	"github.com/opentracing/opentracing-go/log"
+	log "github.com/sirupsen/logrus"
+)
+
+const (
+	retryAttempts = 3
 )
 
 func NewUpdater(cfg *configuration.Config) (*Updater, error) {
@@ -35,11 +40,11 @@ type Updater struct {
 	p   cloud.CloudProvider
 }
 
-func (u *Updater) Start(changes <-chan *types.LoadBalancerUpstreamDefinition) {
+func (u *Updater) Start(changes chan *types.Change) {
 	ticker := time.NewTicker(time.Second * 5)
 	defer ticker.Stop()
 
-	addresses := make([]string, 0)
+	domains := make([]string, 0)
 
 	for {
 		select {
@@ -48,20 +53,46 @@ func (u *Updater) Start(changes <-chan *types.LoadBalancerUpstreamDefinition) {
 				return
 			}
 
-			if err := u.handleChange(change); err != nil {
-				log.Error(err)
+			if !u.shouldProcessChange(change) {
+				changes <- change
 				continue
 			}
 
-			addresses = append(addresses, change.Domain)
+			if err := u.handleChange(change.Obj); err != nil {
+				log.Error(err)
+				change.Retried += 1
+				if change.Retried < retryAttempts {
+					log.Infof("retry %d/%d: reschedule change for %s", change.Retried, retryAttempts, change.Obj.Domain)
+					change.RetryAfter = aws.Time(time.Now().Add(time.Second * 5))
+					changes <- change
+				} else {
+					log.Infof("retry %d/%d: change for %s could not be applied", change.Retried, retryAttempts, change.Obj.Domain)
+				}
+				continue
+			}
+
+			domains = append(domains, change.Obj.Domain)
 
 		case <-ticker.C:
-			if err := u.p.UpsertRecordSet(addresses); err != nil {
+			log.Println("updating records", domains)
+			if err := u.p.UpsertRecordSet(domains); err != nil {
 				log.Error(err)
+				// don't empty the domain buffer on error
+				continue
 			}
-			addresses = make([]string, 0)
+			domains = make([]string, 0)
 		}
 	}
+}
+
+func (u *Updater) shouldProcessChange(change *types.Change) bool {
+	if change.RetryAfter != nil {
+		if time.Now().Before(*change.RetryAfter) {
+			return false
+		}
+	}
+
+	return true
 }
 
 func (u *Updater) handleChange(change *types.LoadBalancerUpstreamDefinition) error {

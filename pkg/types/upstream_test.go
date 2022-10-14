@@ -12,7 +12,7 @@ func TestLoadBalancerUpstreamDefinitionFromK8sEndpoint(t *testing.T) {
 	domain := "foo.com"
 	tests := map[string]struct {
 		endpoint *corev1.Endpoints
-		expected *LoadBalancerUpstreamDefinition
+		expected *Change
 	}{
 		"returns nil when endpoints is nil": {
 			nil,
@@ -29,18 +29,20 @@ func TestLoadBalancerUpstreamDefinitionFromK8sEndpoint(t *testing.T) {
 					},
 				},
 			},
-			&LoadBalancerUpstreamDefinition{
-				Domain: domain,
-				Servers: []*Server{
-					{Id: "my-pod-1", IPAddress: "10.1.1.1", Port: 8443},
+			&Change{
+				Obj: &LoadBalancerUpstreamDefinition{
+					Domain: domain,
+					Servers: []*Server{
+						{Id: "my-pod-1", IPAddress: "10.1.1.1", Port: 8443},
+					},
 				},
 			},
 		},
 	}
 
 	for name, test := range tests {
-		def := LoadBalancerUpstreamDefinitionFromK8sEndpoint(domain, test.endpoint)
-		assert.Equal(t, test.expected, def, name)
+		change := NewLoadBalancerDefinitionChange(domain, test.endpoint)
+		assert.Equal(t, test.expected, change, name)
 	}
 }
 

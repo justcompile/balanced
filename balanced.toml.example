@@ -22,5 +22,5 @@ use-public-address = true|false
 
 [dns.route53]
 hosted-zone-id = ""
-type = "A"
+record-type = "A"
 ttl = 60

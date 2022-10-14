@@ -15,9 +15,9 @@ import (
 	"github.com/aws/aws-sdk-go/service/route53/route53iface"
 )
 
-func getAWSSession() (*session.Session, error) {
+func getAWSSession(region string) (*session.Session, error) {
 	config := aws.Config{
-		// Region: &region,
+		Region: &region,
 		Credentials: credentials.NewChainCredentials(
 			[]credentials.Provider{
 				&credentials.EnvProvider{},
@@ -118,15 +118,20 @@ func (a *AWSProvider) UpsertRecordSet(domains []string) error {
 }
 
 func NewAWSProvider(cfg *configuration.DNS) (*AWSProvider, error) {
-	sess, err := getAWSSession()
-	if err != nil {
-		return nil, fmt.Errorf("aws: unable to initialise session: %s", err)
-	}
-
-	ec2meta := ec2metadata.New(sess)
+	ec2meta := ec2metadata.New(session.Must(session.NewSession()))
 	tagValue, err := ec2meta.GetMetadata("tags/instance/" + cfg.TagKey)
 	if err != nil {
 		return nil, fmt.Errorf("route-53: retrieving instance tags failed: %s", err)
+	}
+
+	doc, err := ec2meta.GetInstanceIdentityDocument()
+	if err != nil {
+		return nil, fmt.Errorf("route-53: retrieving instance information failed: %s", err)
+	}
+
+	sess, err := getAWSSession(doc.Region)
+	if err != nil {
+		return nil, fmt.Errorf("aws: unable to initialise session: %s", err)
 	}
 
 	p := &AWSProvider{
