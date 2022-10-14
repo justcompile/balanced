@@ -1,6 +1,7 @@
 package cloud
 
 import (
+	"balanced/pkg/configuration"
 	"errors"
 	"testing"
 
@@ -79,13 +80,41 @@ func TestAWSProviderGetAddresses(t *testing.T) {
 
 func TestAWSProviderUpdateRecords(t *testing.T) {
 	tests := map[string]struct {
-		client      *mockRoute53
+		r53 *mockRoute53
+
+		ec2         *mockEC2Service
 		domains     []string
 		expectedErr error
-	}{}
+	}{
+		"returns no error when no domains are supplied": {
+			&mockRoute53{err: errors.New("shouldn't see this")},
+			nil,
+			nil,
+			nil,
+		},
+		"returns error when unable to retrieve addresses": {
+			&mockRoute53{err: errors.New("shouldn't see this")},
+			&mockEC2Service{responseErr: errors.New("no addresses found")},
+			[]string{"foo.com"},
+			errors.New("discovery: describing instances failed: no addresses found"),
+		},
+		"returns error when error occurred making DNS changes": {
+			&mockRoute53{err: errors.New("hosted zone not found")},
+			&mockEC2Service{instances: []*ec2.Instance{{PrivateIpAddress: aws.String("10.1.1.1")}}},
+			[]string{"foo.com"},
+			errors.New("hosted zone not found"),
+		},
+	}
 
 	for name, test := range tests {
-		p := &AWSProvider{r53Client: test.client}
+		p := &AWSProvider{
+			cfg: &configuration.DNS{
+				Route53: &configuration.Route53{},
+			},
+			r53Client: test.r53,
+			ec2Client: test.ec2,
+			lookup:    &LookupConfig{},
+		}
 		err := p.UpsertRecordSet(test.domains)
 		assert.Equal(t, test.expectedErr, err, name)
 	}
