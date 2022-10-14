@@ -4,9 +4,16 @@ import (
 	"bytes"
 	"net"
 	"sort"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 )
+
+type Change struct {
+	Obj        *LoadBalancerUpstreamDefinition
+	Retried    int
+	RetryAfter *time.Time
+}
 
 type LoadBalancerUpstreamDefinition struct {
 	Domain  string
@@ -19,7 +26,11 @@ type Server struct {
 	Port      int32
 }
 
-func LoadBalancerUpstreamDefinitionFromK8sEndpoint(domain string, endpoint *corev1.Endpoints) *LoadBalancerUpstreamDefinition {
+func NewLoadBalancerDefinitionChange(domain string, endpoint *corev1.Endpoints) *Change {
+	if endpoint == nil {
+		return nil
+	}
+
 	def := &LoadBalancerUpstreamDefinition{
 		Domain:  domain,
 		Servers: make([]*Server, 0),
@@ -37,10 +48,13 @@ func LoadBalancerUpstreamDefinitionFromK8sEndpoint(domain string, endpoint *core
 		}
 	}
 
-	return def
+	return &Change{Obj: def}
 }
 
 func SortedIPsFromEndpoint(e *corev1.Endpoints) []net.IP {
+	if e == nil {
+		return nil
+	}
 	addresses := make([]net.IP, 0)
 
 	for _, ss := range e.Subsets {

@@ -19,7 +19,6 @@ func endpointHasChanged(oldEndpoint, newEndpoint *corev1.Endpoints) bool {
 		oldIps := types.SortedIPsFromEndpoint(oldEndpoint)
 		newIps := types.SortedIPsFromEndpoint(newEndpoint)
 
-		// version has changed, lets dig deeper
 		return !equal(oldIps, newIps)
 	}
 	return false

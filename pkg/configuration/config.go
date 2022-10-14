@@ -1,6 +1,8 @@
 package configuration
 
 import (
+	"fmt"
+
 	"github.com/BurntSushi/toml"
 
 	"os"
@@ -12,6 +14,20 @@ import (
 type Config struct {
 	Kubernetes   *KubeConfig
 	LoadBalancer *LoadBalancer
+	DNS          DNS
+}
+
+type DNS struct {
+	Enabled          bool   `toml:"enabled"`
+	TagKey           string `toml:"discovery-tag"`
+	UsePublicAddress bool   `toml:"use-public-address"`
+	Route53          *Route53
+}
+
+type Route53 struct {
+	HostedZoneId string `toml:"hosted-zone-id"`
+	Type         string `toml:"record-type"`
+	TTL          int64  `toml:"ttl"`
 }
 
 type LoadBalancer struct {
@@ -44,7 +60,7 @@ func New(path string) (*Config, error) {
 	var cfg Config
 	_, err := toml.DecodeFile(path, &cfg)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("configuration: %s", err)
 	}
 	return &cfg, nil
 }

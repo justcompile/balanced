@@ -23,7 +23,7 @@ var root = &cobra.Command{
 			log.Fatal(err)
 		}
 
-		lb, lbErr := loadbalancer.NewUpdater(cfg.LoadBalancer)
+		lb, lbErr := loadbalancer.NewUpdater(cfg)
 		if lbErr != nil {
 			log.Fatal(lbErr)
 		}
