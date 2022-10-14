@@ -6,7 +6,6 @@ require (
 	github.com/BurntSushi/toml v1.2.0
 	github.com/aws/aws-sdk-go v1.44.114
 	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510
-	github.com/opentracing/opentracing-go v1.2.0
 	github.com/sirupsen/logrus v1.9.0
 	github.com/spf13/cobra v1.5.0
 	github.com/stretchr/testify v1.8.0
