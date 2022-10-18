@@ -27,7 +27,7 @@ func NewUpdater(cfg *configuration.Config) (*Updater, error) {
 		return nil, err
 	}
 
-	p, err := awscloud.New(&cfg.DNS)
+	p, err := awscloud.New(cfg.Cloud.AWS, &cfg.DNS)
 	if err != nil {
 		return nil, err
 	}

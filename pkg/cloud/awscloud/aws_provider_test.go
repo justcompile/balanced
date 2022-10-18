@@ -109,9 +109,8 @@ func TestAWSProviderUpdateRecords(t *testing.T) {
 
 	for name, test := range tests {
 		p := &AWSProvider{
-			cfg: &configuration.DNS{
-				Route53: &configuration.Route53{},
-			},
+			cfg:       &configuration.AWS{},
+			dnsCfg:    &configuration.DNS{},
 			r53Client: test.r53,
 			ec2Client: test.ec2,
 			lookup:    &cloud.LookupConfig{},

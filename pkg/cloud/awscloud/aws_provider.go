@@ -19,6 +19,10 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+const (
+	eksClusterTagKey = "eks:cluster-name"
+)
+
 func getAWSSession(region string) (*session.Session, error) {
 	config := aws.Config{
 		Region: &region,
@@ -35,7 +39,8 @@ func getAWSSession(region string) (*session.Session, error) {
 }
 
 type AWSProvider struct {
-	cfg       *configuration.DNS
+	cfg       *configuration.AWS
+	dnsCfg    *configuration.DNS
 	lookup    *cloud.LookupConfig
 	ec2Client ec2iface.EC2API
 	r53Client route53iface.Route53API
@@ -96,8 +101,9 @@ func (a *AWSProvider) ReconcileSecurityGroups(defs map[string]*types.LoadBalance
 	}
 
 	secGroupId := instances[0].SecurityGroups[0].GroupId
+	clusterName := getTagValue(instances[0].Tags, eksClusterTagKey)
 
-	secGroup, sGrpErr := a.upsertSecurityGroupRules(ports, secGroupId, instances[0].VpcId, fullSync)
+	secGroup, sGrpErr := a.upsertSecurityGroupRules(ports, secGroupId, instances[0].VpcId, clusterName, fullSync)
 	if sGrpErr != nil {
 		return sGrpErr
 	}
@@ -129,14 +135,14 @@ func (a *AWSProvider) UpsertRecordSet(domains []string) error {
 			ResourceRecordSet: &route53.ResourceRecordSet{
 				Name:            aws.String(domain),
 				ResourceRecords: records,
-				Type:            aws.String(a.cfg.Route53.Type),
-				TTL:             aws.Int64(a.cfg.Route53.TTL),
+				Type:            aws.String(a.cfg.Type),
+				TTL:             aws.Int64(a.cfg.TTL),
 			},
 		}
 	}
 
 	input := &route53.ChangeResourceRecordSetsInput{
-		HostedZoneId: aws.String(a.cfg.Route53.HostedZoneId),
+		HostedZoneId: aws.String(a.cfg.HostedZoneId),
 		ChangeBatch: &route53.ChangeBatch{
 			Changes: changes,
 		},
@@ -146,13 +152,20 @@ func (a *AWSProvider) UpsertRecordSet(domains []string) error {
 	return changeErr
 }
 
-func (a *AWSProvider) upsertSecurityGroupRules(ports types.Set[int64], lbSecurityGroupId, vpcId *string, fullSync bool) (*cloud.SecurityGroup, error) {
+func (a *AWSProvider) upsertSecurityGroupRules(ports types.Set[int64], lbSecurityGroupId, vpcId *string, clusterName string, fullSync bool) (*cloud.SecurityGroup, error) {
+	filters := []*ec2.Filter{
+		{Name: aws.String("tag-key"), Values: aws.StringSlice([]string{cloud.SecurityGroupTag})},
+		{Name: aws.String(eksClusterTagKey), Values: aws.StringSlice([]string{clusterName})},
+		{Name: aws.String("vpc-id"), Values: []*string{vpcId}},
+	}
+
+	for k, v := range a.cfg.TagsAsMap() {
+		filters = append(filters, (&ec2.Filter{}).SetName("tag:"+k).SetValues(aws.StringSlice([]string{v})))
+	}
+
 	resp, err := a.ec2Client.DescribeSecurityGroups(
 		&ec2.DescribeSecurityGroupsInput{
-			Filters: []*ec2.Filter{
-				{Name: aws.String("tag-key"), Values: aws.StringSlice([]string{cloud.SecurityGroupTag})},
-				{Name: aws.String("vpc-id"), Values: []*string{vpcId}},
-			},
+			Filters: filters,
 		},
 	)
 
@@ -161,7 +174,7 @@ func (a *AWSProvider) upsertSecurityGroupRules(ports types.Set[int64], lbSecurit
 	}
 
 	if len(resp.SecurityGroups) == 0 {
-		return a.createSecurityGroup(ports, lbSecurityGroupId, vpcId)
+		return a.createSecurityGroup(ports, lbSecurityGroupId, vpcId, clusterName)
 	}
 
 	if len(resp.SecurityGroups) > 1 {
@@ -210,9 +223,19 @@ func (a *AWSProvider) updateRules(grp *ec2.SecurityGroup, requiredPorts types.Se
 	return nil
 }
 
-func (a *AWSProvider) createSecurityGroup(ports types.Set[int64], lbSecurityGroupId, vpcId *string) (*cloud.SecurityGroup, error) {
+func (a *AWSProvider) createSecurityGroup(ports types.Set[int64], lbSecurityGroupId, vpcId *string, clusterName string) (*cloud.SecurityGroup, error) {
 	suffix := strings.Split(uuid.New().String(), "-")[0]
 	groupName := aws.String("balanced-to-eks-ingress-" + suffix)
+
+	tags := []*ec2.Tag{
+		(&ec2.Tag{}).SetKey(cloud.SecurityGroupTag).SetValue("1"),
+		(&ec2.Tag{}).SetKey(eksClusterTagKey).SetValue(clusterName),
+		{Key: aws.String("Name"), Value: groupName},
+	}
+
+	for k, v := range a.cfg.TagsAsMap() {
+		tags = append(tags, (&ec2.Tag{}).SetKey(k).SetValue(v))
+	}
 
 	resp, err := a.ec2Client.CreateSecurityGroup(
 		&ec2.CreateSecurityGroupInput{
@@ -222,10 +245,7 @@ func (a *AWSProvider) createSecurityGroup(ports types.Set[int64], lbSecurityGrou
 			TagSpecifications: []*ec2.TagSpecification{
 				(&ec2.TagSpecification{}).
 					SetResourceType("security-group").
-					SetTags([]*ec2.Tag{
-						(&ec2.Tag{}).SetKey(cloud.SecurityGroupTag).SetValue("1"),
-						{Key: aws.String("Name"), Value: groupName},
-					}),
+					SetTags(tags),
 			},
 		},
 	)
@@ -292,8 +312,8 @@ func (a *AWSProvider) getInstancesFromDNSNames(names types.Set[string]) ([]*ec2.
 	return instances, nil
 }
 
-func New(cfg *configuration.DNS) (*AWSProvider, error) {
-	meta, err := getInstanceMetaData(cfg.TagKey)
+func New(cfg *configuration.AWS, dnsCfg *configuration.DNS) (*AWSProvider, error) {
+	meta, err := getInstanceMetaData(dnsCfg.TagKey)
 	if err != nil {
 		return nil, err
 	}
@@ -304,11 +324,12 @@ func New(cfg *configuration.DNS) (*AWSProvider, error) {
 	}
 
 	p := &AWSProvider{
-		cfg: cfg,
+		cfg:    cfg,
+		dnsCfg: dnsCfg,
 		lookup: &cloud.LookupConfig{
-			TagKey:      cfg.TagKey,
+			TagKey:      dnsCfg.TagKey,
 			TagValue:    meta.tagValue,
-			UsePublicIP: cfg.UsePublicAddress,
+			UsePublicIP: dnsCfg.UsePublicAddress,
 		},
 		ec2Client: ec2.New(sess),
 		r53Client: route53.New(sess),
