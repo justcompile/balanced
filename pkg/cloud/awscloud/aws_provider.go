@@ -4,6 +4,7 @@ import (
 	"balanced/pkg/cloud"
 	"balanced/pkg/configuration"
 	"balanced/pkg/types"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -90,6 +91,10 @@ func (a *AWSProvider) ReconcileSecurityGroups(defs map[string]*types.LoadBalance
 	for _, def := range defs {
 		ports.Add(int64(def.Servers[0].Port))
 		nodes.Add(def.Servers[0].Meta.NodeName)
+	}
+
+	if len(nodes) == 0 {
+		return errors.New("node list is empty, not reconciling security groups")
 	}
 
 	instances, insErr := a.getInstancesFromDNSNames(nodes)
@@ -290,6 +295,7 @@ func (a *AWSProvider) getInstancesFromDNSNames(names types.Set[string]) ([]*ec2.
 	input := &ec2.DescribeInstancesInput{
 		Filters: []*ec2.Filter{
 			{Name: aws.String("private-dns-name"), Values: aws.StringSlice(values)},
+			{Name: aws.String("instance-state-name"), Values: []*string{aws.String("running")}},
 		},
 	}
 
