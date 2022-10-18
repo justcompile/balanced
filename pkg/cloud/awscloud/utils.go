@@ -30,8 +30,8 @@ func ipPermissionsFromPorts(ports types.Set[int64], destinationGroupId string) [
 			SetFromPort(p).
 			SetToPort(p).
 			SetIpProtocol(ec2.ProtocolTcp).
-			SetIpRanges([]*ec2.IpRange{
-				{CidrIp: aws.String(destinationGroupId), Description: aws.String("Managed by balanced")},
+			SetUserIdGroupPairs([]*ec2.UserIdGroupPair{
+				{GroupId: aws.String(destinationGroupId), Description: aws.String("Managed by balanced")},
 			})
 	}
 
