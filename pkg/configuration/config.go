@@ -34,7 +34,7 @@ func (a *AWS) TagsAsMap() map[string]string {
 	val := make(map[string]string)
 
 	for _, tag := range a.Tags {
-		parts := strings.Split(tag, ":")
+		parts := strings.Split(tag, "=")
 		val[parts[0]] = parts[1]
 	}
 

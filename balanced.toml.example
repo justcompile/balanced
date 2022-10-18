@@ -20,9 +20,6 @@ enabled = true|false
 discovery-tag = "" # tag key used to lookup other cluster members
 use-public-address = true|false
 
-[dns.route53]
-
-
 [cloud.aws]
 route53-hosted-zone-id = ""
 route53-record-type = "A"

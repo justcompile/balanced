@@ -19,10 +19,6 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-const (
-	eksClusterTagKey = "eks:cluster-name"
-)
-
 func getAWSSession(region string) (*session.Session, error) {
 	config := aws.Config{
 		Region: &region,
@@ -101,9 +97,8 @@ func (a *AWSProvider) ReconcileSecurityGroups(defs map[string]*types.LoadBalance
 	}
 
 	secGroupId := instances[0].SecurityGroups[0].GroupId
-	clusterName := getTagValue(instances[0].Tags, eksClusterTagKey)
 
-	secGroup, sGrpErr := a.upsertSecurityGroupRules(ports, secGroupId, instances[0].VpcId, clusterName, fullSync)
+	secGroup, sGrpErr := a.upsertSecurityGroupRules(ports, secGroupId, instances[0].VpcId, fullSync)
 	if sGrpErr != nil {
 		return sGrpErr
 	}
@@ -152,10 +147,9 @@ func (a *AWSProvider) UpsertRecordSet(domains []string) error {
 	return changeErr
 }
 
-func (a *AWSProvider) upsertSecurityGroupRules(ports types.Set[int64], lbSecurityGroupId, vpcId *string, clusterName string, fullSync bool) (*cloud.SecurityGroup, error) {
+func (a *AWSProvider) upsertSecurityGroupRules(ports types.Set[int64], lbSecurityGroupId, vpcId *string, fullSync bool) (*cloud.SecurityGroup, error) {
 	filters := []*ec2.Filter{
 		{Name: aws.String("tag-key"), Values: aws.StringSlice([]string{cloud.SecurityGroupTag})},
-		{Name: aws.String(eksClusterTagKey), Values: aws.StringSlice([]string{clusterName})},
 		{Name: aws.String("vpc-id"), Values: []*string{vpcId}},
 	}
 
@@ -174,7 +168,7 @@ func (a *AWSProvider) upsertSecurityGroupRules(ports types.Set[int64], lbSecurit
 	}
 
 	if len(resp.SecurityGroups) == 0 {
-		return a.createSecurityGroup(ports, lbSecurityGroupId, vpcId, clusterName)
+		return a.createSecurityGroup(ports, lbSecurityGroupId, vpcId)
 	}
 
 	if len(resp.SecurityGroups) > 1 {
@@ -223,13 +217,12 @@ func (a *AWSProvider) updateRules(grp *ec2.SecurityGroup, requiredPorts types.Se
 	return nil
 }
 
-func (a *AWSProvider) createSecurityGroup(ports types.Set[int64], lbSecurityGroupId, vpcId *string, clusterName string) (*cloud.SecurityGroup, error) {
+func (a *AWSProvider) createSecurityGroup(ports types.Set[int64], lbSecurityGroupId, vpcId *string) (*cloud.SecurityGroup, error) {
 	suffix := strings.Split(uuid.New().String(), "-")[0]
 	groupName := aws.String("balanced-to-eks-ingress-" + suffix)
 
 	tags := []*ec2.Tag{
 		(&ec2.Tag{}).SetKey(cloud.SecurityGroupTag).SetValue("1"),
-		(&ec2.Tag{}).SetKey(eksClusterTagKey).SetValue(clusterName),
 		{Key: aws.String("Name"), Value: groupName},
 	}
 
