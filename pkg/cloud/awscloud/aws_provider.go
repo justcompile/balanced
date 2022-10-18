@@ -5,6 +5,7 @@ import (
 	"balanced/pkg/configuration"
 	"balanced/pkg/types"
 	"fmt"
+	"strings"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
@@ -14,6 +15,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/ec2/ec2iface"
 	"github.com/aws/aws-sdk-go/service/route53"
 	"github.com/aws/aws-sdk-go/service/route53/route53iface"
+	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -88,7 +90,6 @@ func (a *AWSProvider) ReconcileSecurityGroups(defs map[string]*types.LoadBalance
 		nodes.Add(def.Servers[0].Meta.NodeName)
 	}
 
-	// TODO: handle removed ports
 	instances, insErr := a.getInstancesFromDNSNames(nodes)
 	if insErr != nil {
 		return insErr
@@ -161,6 +162,10 @@ func (a *AWSProvider) upsertSecurityGroupRules(ports types.Set[int64], lbSecurit
 		return a.createSecurityGroup(ports, lbSecurityGroup, vpcId)
 	}
 
+	if len(resp.SecurityGroups) > 1 {
+		return nil, fmt.Errorf("awscloud: multiple security groups with the tag %s exist", cloud.SecurityGroupTag)
+	}
+
 	if fullSync {
 		err = a.updateRules(resp.SecurityGroups[0], ports, lbSecurityGroup)
 	}
@@ -201,10 +206,11 @@ func (a *AWSProvider) updateRules(grp *ec2.SecurityGroup, requiredPorts types.Se
 }
 
 func (a *AWSProvider) createSecurityGroup(ports types.Set[int64], lbSecurityGroupId string, vpcId *string) (*cloud.SecurityGroup, error) {
+	suffix := strings.Split(uuid.New().String(), "-")[0]
 	resp, err := a.ec2Client.CreateSecurityGroup(
 		&ec2.CreateSecurityGroupInput{
 			Description: aws.String("Ingress Rules from Balanced Load Balancer"),
-			GroupName:   aws.String("balanced-to-eks-ingress"), // TODO: Config property
+			GroupName:   aws.String("balanced-to-eks-ingress-" + suffix),
 			VpcId:       vpcId,
 			TagSpecifications: []*ec2.TagSpecification{
 				(&ec2.TagSpecification{}).
