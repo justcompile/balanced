@@ -8,10 +8,7 @@ import (
 )
 
 func shouldWatchResource[T NamespacedResource](w *Watcher, obj T) bool {
-	_, isExcluded := w.excludeNamespaces[obj.GetNamespace()]
-	_, explicitlyIncluded := w.watchNamespaces[obj.GetNamespace()]
-
-	return (explicitlyIncluded || len(w.watchNamespaces) == 0) && !isExcluded
+	return (w.watchNamespaces.Has(obj.GetNamespace()) || len(w.watchNamespaces) == 0) && !w.excludeNamespaces.Has(obj.GetNamespace())
 }
 
 func endpointHasChanged(oldEndpoint, newEndpoint *corev1.Endpoints) bool {

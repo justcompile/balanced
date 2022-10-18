@@ -1,6 +1,7 @@
-package cloud
+package awscloud
 
 import (
+	"balanced/pkg/cloud"
 	"balanced/pkg/configuration"
 	"errors"
 	"testing"
@@ -13,13 +14,13 @@ import (
 func TestAWSProviderGetAddresses(t *testing.T) {
 	tests := map[string]struct {
 		client            *mockEC2Service
-		cfg               *LookupConfig
+		cfg               *cloud.LookupConfig
 		expectedAddresses []string
 		expectedErr       error
 	}{
 		"returns error if ec2.DescribeInstances does": {
 			&mockEC2Service{responseErr: errors.New("api error")},
-			&LookupConfig{},
+			&cloud.LookupConfig{},
 			nil,
 			errors.New("discovery: describing instances failed: api error"),
 		},
@@ -29,7 +30,7 @@ func TestAWSProviderGetAddresses(t *testing.T) {
 					{PrivateIpAddress: aws.String("10.0.0.1")},
 				},
 			},
-			&LookupConfig{UsePublicIP: true},
+			&cloud.LookupConfig{UsePublicIP: true},
 			nil,
 			nil,
 		},
@@ -39,7 +40,7 @@ func TestAWSProviderGetAddresses(t *testing.T) {
 					{},
 				},
 			},
-			&LookupConfig{},
+			&cloud.LookupConfig{},
 			nil,
 			nil,
 		},
@@ -49,7 +50,7 @@ func TestAWSProviderGetAddresses(t *testing.T) {
 					{PublicIpAddress: aws.String("10.0.0.1")},
 				},
 			},
-			&LookupConfig{UsePublicIP: true},
+			&cloud.LookupConfig{UsePublicIP: true},
 			[]string{"10.0.0.1"},
 			nil,
 		},
@@ -60,7 +61,7 @@ func TestAWSProviderGetAddresses(t *testing.T) {
 					{PublicIpAddress: aws.String("4.0.0.1"), PrivateIpAddress: aws.String("100.1.1.1")},
 				},
 			},
-			&LookupConfig{UsePublicIP: false},
+			&cloud.LookupConfig{UsePublicIP: false},
 			[]string{"10.1.1.1", "100.1.1.1"},
 			nil,
 		},
@@ -108,12 +109,11 @@ func TestAWSProviderUpdateRecords(t *testing.T) {
 
 	for name, test := range tests {
 		p := &AWSProvider{
-			cfg: &configuration.DNS{
-				Route53: &configuration.Route53{},
-			},
+			cfg:       &configuration.AWS{},
+			dnsCfg:    &configuration.DNS{},
 			r53Client: test.r53,
 			ec2Client: test.ec2,
-			lookup:    &LookupConfig{},
+			lookup:    &cloud.LookupConfig{},
 		}
 		err := p.UpsertRecordSet(test.domains)
 		assert.Equal(t, test.expectedErr, err, name)

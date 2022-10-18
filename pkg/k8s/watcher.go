@@ -37,17 +37,17 @@ func NewWatcher(cfg *configuration.KubeConfig, opts ...WatchOptions) (*Watcher, 
 	w := &Watcher{
 		cfg:               cfg,
 		clientset:         clientset,
-		excludeNamespaces: make(map[string]struct{}),
-		watchNamespaces:   make(map[string]struct{}),
+		excludeNamespaces: make(types.Set[string]),
+		watchNamespaces:   make(types.Set[string]),
 		serviceCache:      newServiceCache(cfg, clientset),
 	}
 
 	for _, ns := range cfg.WatchedNamespaces {
-		w.watchNamespaces[ns] = struct{}{}
+		w.watchNamespaces.Add(ns)
 	}
 
 	for _, ns := range cfg.ExcludedNamespaces {
-		w.excludeNamespaces[ns] = struct{}{}
+		w.excludeNamespaces.Add(ns)
 	}
 
 	for _, opt := range opts {
@@ -67,8 +67,8 @@ type Watcher struct {
 	clientset         *kubernetes.Clientset
 	resyncInterval    *time.Duration
 	informer          kubeinformers.SharedInformerFactory
-	watchNamespaces   map[string]struct{}
-	excludeNamespaces map[string]struct{}
+	watchNamespaces   types.Set[string]
+	excludeNamespaces types.Set[string]
 	serviceCache      *serviceCache
 }
 

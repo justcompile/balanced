@@ -2,6 +2,7 @@ package configuration
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/BurntSushi/toml"
 
@@ -14,20 +15,36 @@ import (
 type Config struct {
 	Kubernetes   *KubeConfig
 	LoadBalancer *LoadBalancer
+	Cloud        Cloud
 	DNS          DNS
+}
+
+type Cloud struct {
+	AWS *AWS
+}
+
+type AWS struct {
+	HostedZoneId string   `toml:"route-53-hosted-zone-id"`
+	Type         string   `toml:"route-53-record-type"`
+	TTL          int64    `toml:"route-53-ttl"`
+	Tags         []string `toml:"tags"`
+}
+
+func (a *AWS) TagsAsMap() map[string]string {
+	val := make(map[string]string)
+
+	for _, tag := range a.Tags {
+		parts := strings.Split(tag, "=")
+		val[parts[0]] = parts[1]
+	}
+
+	return val
 }
 
 type DNS struct {
 	Enabled          bool   `toml:"enabled"`
 	TagKey           string `toml:"discovery-tag"`
 	UsePublicAddress bool   `toml:"use-public-address"`
-	Route53          *Route53
-}
-
-type Route53 struct {
-	HostedZoneId string `toml:"hosted-zone-id"`
-	Type         string `toml:"record-type"`
-	TTL          int64  `toml:"ttl"`
 }
 
 type LoadBalancer struct {
@@ -37,10 +54,21 @@ type LoadBalancer struct {
 }
 
 type KubeConfig struct {
-	ConfigPath           string   `toml:"kube-config"`
-	ServiceAnnotationKey string   `toml:"service-annotation-key"`
-	WatchedNamespaces    []string `toml:"watch-namespaces"`
-	ExcludedNamespaces   []string `toml:"exclude-namespaces"`
+	ConfigPath                      string   `toml:"kube-config"`
+	ServiceAnnotationKeyPrefix      string   `toml:"service-annotation-key-prefix"`
+	ServiceAnnotationLoadBalancerId string   `toml:"service-annotation-load-balancer-id"`
+	WatchedNamespaces               []string `toml:"watch-namespaces"`
+	ExcludedNamespaces              []string `toml:"exclude-namespaces"`
+}
+
+func (k *KubeConfig) DomainAnnotationKey() string {
+	prefix := strings.TrimSuffix(k.ServiceAnnotationKeyPrefix, "/")
+	return fmt.Sprintf("%s/domain", prefix)
+}
+
+func (k *KubeConfig) LoadBalancerIdAnnotationKey() string {
+	prefix := strings.TrimSuffix(k.ServiceAnnotationKeyPrefix, "/")
+	return fmt.Sprintf("%s/load-balancer-id", prefix)
 }
 
 func (k *KubeConfig) GetConfigPath() string {

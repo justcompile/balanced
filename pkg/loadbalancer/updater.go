@@ -2,6 +2,7 @@ package loadbalancer
 
 import (
 	"balanced/pkg/cloud"
+	"balanced/pkg/cloud/awscloud"
 	"balanced/pkg/configuration"
 	"balanced/pkg/types"
 	"fmt"
@@ -26,22 +27,28 @@ func NewUpdater(cfg *configuration.Config) (*Updater, error) {
 		return nil, err
 	}
 
-	p, err := cloud.ProviderFromConfig(&cfg.DNS)
+	p, err := awscloud.New(cfg.Cloud.AWS, &cfg.DNS)
 	if err != nil {
 		return nil, err
 	}
 
-	return &Updater{cfg: cfg, p: p, r: r}, nil
+	return &Updater{
+		cfg:   cfg,
+		p:     p,
+		r:     r,
+		cache: make(map[string]*types.LoadBalancerUpstreamDefinition),
+	}, nil
 }
 
 type Updater struct {
-	cfg *configuration.Config
-	r   *Renderer
-	p   cloud.CloudProvider
+	cfg   *configuration.Config
+	r     *Renderer
+	p     cloud.CloudProvider
+	cache map[string]*types.LoadBalancerUpstreamDefinition
 }
 
 func (u *Updater) Start(changes chan *types.Change) {
-	ticker := time.NewTicker(time.Second * 5)
+	ticker := time.NewTicker(time.Second * 10)
 	defer ticker.Stop()
 
 	domains := make([]string, 0)
@@ -52,6 +59,8 @@ func (u *Updater) Start(changes chan *types.Change) {
 			if !ok {
 				return
 			}
+
+			u.cache[change.Obj.Domain] = change.Obj
 
 			if !u.shouldProcessChange(change) {
 				changes <- change
@@ -72,9 +81,15 @@ func (u *Updater) Start(changes chan *types.Change) {
 			}
 
 			domains = append(domains, change.Obj.Domain)
+			if err := u.p.ReconcileSecurityGroups(map[string]*types.LoadBalancerUpstreamDefinition{"update": change.Obj}, false); err != nil {
+				log.Error(err)
+			}
 
 		case <-ticker.C:
-			log.Println("updating records", domains)
+			if err := u.p.ReconcileSecurityGroups(u.cache, true); err != nil {
+				log.Error(err)
+			}
+
 			if err := u.p.UpsertRecordSet(domains); err != nil {
 				log.Error(err)
 				// don't empty the domain buffer on error
