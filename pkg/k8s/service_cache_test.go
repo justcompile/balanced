@@ -25,21 +25,40 @@ func TestServiceCache_getDomainFromServiceAnnotation(t *testing.T) {
 			"",
 			errors.New("error retrieving service foo:bar => does not exist"),
 		},
-		"returns error if annotation not found on service": {
+		"returns error if domain annotation not found on service": {
 			[]*v1.Service{
 				{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:        "foo",
-						Namespace:   "bar",
-						Annotations: make(map[string]string),
+						Name:      "foo",
+						Namespace: "bar",
+						Annotations: map[string]string{
+							"my.uri/load-balancer-id": "testing",
+						},
 					},
 				},
 			},
 			&namespaceNameKey{name: "foo", namespace: "bar"},
 			"",
-			errors.New("annotation my.uri/domain cannot be found on service foo:bar"),
+			&ignoreService{service: "foo:bar", reason: "annotation my.uri/domain cannot be found"},
 		},
-		"returns domain if annotation found on service": {
+		"returns domain if annotation found on service and lb id matches": {
+			[]*v1.Service{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "foo",
+						Namespace: "bar",
+						Annotations: map[string]string{
+							"my.uri/domain":           "foobar.com",
+							"my.uri/load-balancer-id": "testing",
+						},
+					},
+				},
+			},
+			&namespaceNameKey{name: "foo", namespace: "bar"},
+			"foobar.com",
+			nil,
+		},
+		"returns ignore error if annotation found on service but id does not match": {
 			[]*v1.Service{
 				{
 					ObjectMeta: metav1.ObjectMeta{
@@ -52,15 +71,16 @@ func TestServiceCache_getDomainFromServiceAnnotation(t *testing.T) {
 				},
 			},
 			&namespaceNameKey{name: "foo", namespace: "bar"},
-			"foobar.com",
-			nil,
+			"",
+			&ignoreService{service: "foo:bar", reason: "annotation my.uri/load-balancer-id empty or does not match this load balancer id: testing"},
 		},
 	}
 
 	for name, test := range tests {
 		s := &serviceCache{
 			cfg: &configuration.KubeConfig{
-				ServiceAnnotationKey: "my.uri/domain",
+				ServiceAnnotationKeyPrefix:      "my.uri",
+				ServiceAnnotationLoadBalancerId: "testing",
 			},
 			clientset: &mockClientset{services: test.services},
 		}
@@ -94,7 +114,7 @@ func TestServiceCache_lookupDomainForService(t *testing.T) {
 			"foobar.example.com",
 			nil,
 		},
-		"retrieves domain from service annotation if available": {
+		"does not retrieve domain from service annotation if available but id does not match": {
 			[]*v1.Service{
 				{
 					ObjectMeta: metav1.ObjectMeta{
@@ -102,6 +122,24 @@ func TestServiceCache_lookupDomainForService(t *testing.T) {
 						Namespace: "bar",
 						Annotations: map[string]string{
 							"my.uri/domain": "foobar.com",
+						},
+					},
+				},
+			},
+			make(map[string]string),
+			&namespaceNameKey{name: "foo", namespace: "bar"},
+			"",
+			nil,
+		},
+		"retrieves domain from service annotation if available and id matches": {
+			[]*v1.Service{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "foo",
+						Namespace: "bar",
+						Annotations: map[string]string{
+							"my.uri/domain":           "foobar.com",
+							"my.uri/load-balancer-id": "testing",
 						},
 					},
 				},
@@ -116,7 +154,8 @@ func TestServiceCache_lookupDomainForService(t *testing.T) {
 	for name, test := range tests {
 		s := newServiceCache(
 			&configuration.KubeConfig{
-				ServiceAnnotationKey: "my.uri/domain",
+				ServiceAnnotationKeyPrefix:      "my.uri",
+				ServiceAnnotationLoadBalancerId: "testing",
 			},
 			&mockClientset{services: test.services},
 		)

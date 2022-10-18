@@ -3,6 +3,7 @@ package k8s
 import (
 	"balanced/pkg/configuration"
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 
@@ -24,7 +25,11 @@ func (s *serviceCache) lookupDomainForService(ctx context.Context, ns *namespace
 	if _, exists := s.domainMapping[ns.String()]; !exists {
 		domain, err := s.getDomainFromServiceAnnotation(ctx, ns)
 		if err != nil {
-			log.Error(err.Error())
+			if errors.Is(err, &ignoreService{}) {
+				log.Warn(err)
+			} else {
+				log.Error(err.Error())
+			}
 			return ""
 		}
 
@@ -45,8 +50,13 @@ func (s *serviceCache) getDomainFromServiceAnnotation(ctx context.Context, ns *n
 	var domain string
 	var exists bool
 
-	if domain, exists = svc.GetAnnotations()[s.cfg.ServiceAnnotationKey]; !exists {
-		return "", fmt.Errorf("annotation %s cannot be found on service %s", s.cfg.ServiceAnnotationKey, ns)
+	annotations := svc.GetAnnotations()
+	if id := annotations[s.cfg.LoadBalancerIdAnnotationKey()]; id != s.cfg.ServiceAnnotationLoadBalancerId {
+		return "", &ignoreService{service: ns.String(), reason: fmt.Sprintf("annotation %s empty or does not match this load balancer id: %s", s.cfg.LoadBalancerIdAnnotationKey(), s.cfg.ServiceAnnotationLoadBalancerId)}
+	}
+
+	if domain, exists = annotations[s.cfg.DomainAnnotationKey()]; !exists {
+		return "", &ignoreService{service: ns.String(), reason: fmt.Sprintf("annotation %s cannot be found", s.cfg.DomainAnnotationKey())}
 	}
 
 	return domain, nil

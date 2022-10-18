@@ -2,7 +2,8 @@
 kube-config = "path to config" # omit to use default or config defined in $KUBECONFIG
 watch-namespaces = ["..."] # omit to watch all namespaces
 exclude-namespaces = ["..."]
-service-annotation-key = "k8s.justcompile.io/domain" # annotation key containing the domain to reference
+service-annotation-key-prefix = "k8s.justcompile.io" # annotation key prefix
+service-annotation-load-balancer-id = "foobar-external"
 
 [loadbalancer]
 config-dir = "" # dir to store load balancer configuration

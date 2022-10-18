@@ -37,13 +37,3 @@ func ipPermissionsFromPorts(ports types.Set[int64], destinationGroupId, vpcId *s
 
 	return perms
 }
-
-func getTagValue(tags []*ec2.Tag, key string) string {
-	for _, tag := range tags {
-		if *tag.Key == key {
-			return *tag.Value
-		}
-	}
-
-	return ""
-}

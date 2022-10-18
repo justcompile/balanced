@@ -54,10 +54,21 @@ type LoadBalancer struct {
 }
 
 type KubeConfig struct {
-	ConfigPath           string   `toml:"kube-config"`
-	ServiceAnnotationKey string   `toml:"service-annotation-key"`
-	WatchedNamespaces    []string `toml:"watch-namespaces"`
-	ExcludedNamespaces   []string `toml:"exclude-namespaces"`
+	ConfigPath                      string   `toml:"kube-config"`
+	ServiceAnnotationKeyPrefix      string   `toml:"service-annotation-key-prefix"`
+	ServiceAnnotationLoadBalancerId string   `toml:"service-annotation-load-balancer-id"`
+	WatchedNamespaces               []string `toml:"watch-namespaces"`
+	ExcludedNamespaces              []string `toml:"exclude-namespaces"`
+}
+
+func (k *KubeConfig) DomainAnnotationKey() string {
+	prefix := strings.TrimSuffix(k.ServiceAnnotationKeyPrefix, "/")
+	return fmt.Sprintf("%s/domain", prefix)
+}
+
+func (k *KubeConfig) LoadBalancerIdAnnotationKey() string {
+	prefix := strings.TrimSuffix(k.ServiceAnnotationKeyPrefix, "/")
+	return fmt.Sprintf("%s/load-balancer-id", prefix)
 }
 
 func (k *KubeConfig) GetConfigPath() string {
