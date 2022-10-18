@@ -38,6 +38,7 @@ type AWSProvider struct {
 	cfg       *configuration.AWS
 	dnsCfg    *configuration.DNS
 	lookup    *cloud.LookupConfig
+	metaData  *instanceMetaData
 	ec2Client ec2iface.EC2API
 	r53Client route53iface.Route53API
 }
@@ -96,9 +97,9 @@ func (a *AWSProvider) ReconcileSecurityGroups(defs map[string]*types.LoadBalance
 		return insErr
 	}
 
-	secGroupId := instances[0].SecurityGroups[0].GroupId
+	securityGroupId := a.metaData.securityGroupId
 
-	secGroup, sGrpErr := a.upsertSecurityGroupRules(ports, secGroupId, instances[0].VpcId, fullSync)
+	secGroup, sGrpErr := a.upsertSecurityGroupRules(ports, &securityGroupId, instances[0].VpcId, fullSync)
 	if sGrpErr != nil {
 		return sGrpErr
 	}
@@ -317,8 +318,9 @@ func New(cfg *configuration.AWS, dnsCfg *configuration.DNS) (*AWSProvider, error
 	}
 
 	p := &AWSProvider{
-		cfg:    cfg,
-		dnsCfg: dnsCfg,
+		cfg:      cfg,
+		dnsCfg:   dnsCfg,
+		metaData: meta,
 		lookup: &cloud.LookupConfig{
 			TagKey:      dnsCfg.TagKey,
 			TagValue:    meta.tagValue,
