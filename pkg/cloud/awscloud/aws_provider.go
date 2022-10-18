@@ -244,12 +244,12 @@ func (a *AWSProvider) associateSecurityGroupToInstances(secGroup *cloud.Security
 		for _, ni := range instance.NetworkInterfaces {
 			if groupIds, exists := NetworkInterfaceHasGroup(ni, secGroup.Id); !exists {
 				groupIds = append(groupIds, &secGroup.Id)
-				_, err := a.ec2Client.ModifyNetworkInterfaceAttribute(&ec2.ModifyNetworkInterfaceAttributeInput{
+				if _, err := a.ec2Client.ModifyNetworkInterfaceAttribute(&ec2.ModifyNetworkInterfaceAttributeInput{
 					NetworkInterfaceId: ni.NetworkInterfaceId,
 					Groups:             groupIds,
-				})
-
-				log.Error(err)
+				}); err != nil {
+					log.Error(err)
+				}
 			}
 		}
 	}
