@@ -4,9 +4,7 @@ import (
 	"balanced/pkg/cloud"
 	"balanced/pkg/configuration"
 	"balanced/pkg/types"
-	"encoding/json"
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -37,11 +35,10 @@ func getAWSSession(region string) (*session.Session, error) {
 }
 
 type AWSProvider struct {
-	cfg                 *configuration.DNS
-	lbSecurityGroupName string
-	lookup              *cloud.LookupConfig
-	ec2Client           ec2iface.EC2API
-	r53Client           route53iface.Route53API
+	cfg       *configuration.DNS
+	lookup    *cloud.LookupConfig
+	ec2Client ec2iface.EC2API
+	r53Client route53iface.Route53API
 }
 
 func (a *AWSProvider) GetAddresses(cfg *cloud.LookupConfig) ([]string, error) {
@@ -198,18 +195,16 @@ func (a *AWSProvider) updateRules(grp *ec2.SecurityGroup, requiredPorts types.Se
 	}
 
 	if len(portsToAdd) > 0 {
-		log.Infof("awscloud: adding ports %v from security group %s", portsToAdd, *grp.GroupId)
+		log.Debugf("awscloud: adding ports %v from security group %s", portsToAdd, *grp.GroupId)
 
-		input := &ec2.AuthorizeSecurityGroupIngressInput{
+		if _, err := a.ec2Client.AuthorizeSecurityGroupIngress(&ec2.AuthorizeSecurityGroupIngressInput{
 			IpPermissions: ipPermissionsFromPorts(portsToAdd, lbSecurityGroupId, vpcId),
 			GroupId:       grp.GroupId,
-		}
-
-		json.NewEncoder(os.Stdout).Encode(input)
-
-		if _, err := a.ec2Client.AuthorizeSecurityGroupIngress(input); err != nil {
+		}); err != nil {
 			return fmt.Errorf("awscloud: an error occured updating ingress rules: %s", err)
 		}
+
+		log.Debugf("awscloud: updated security group rules: group-id %s ", *grp.GroupId)
 	}
 
 	return nil
@@ -217,16 +212,19 @@ func (a *AWSProvider) updateRules(grp *ec2.SecurityGroup, requiredPorts types.Se
 
 func (a *AWSProvider) createSecurityGroup(ports types.Set[int64], lbSecurityGroupId, vpcId *string) (*cloud.SecurityGroup, error) {
 	suffix := strings.Split(uuid.New().String(), "-")[0]
+	groupName := aws.String("balanced-to-eks-ingress-" + suffix)
+
 	resp, err := a.ec2Client.CreateSecurityGroup(
 		&ec2.CreateSecurityGroupInput{
 			Description: aws.String("Ingress Rules from Balanced Load Balancer"),
-			GroupName:   aws.String("balanced-to-eks-ingress-" + suffix),
+			GroupName:   groupName,
 			VpcId:       vpcId,
 			TagSpecifications: []*ec2.TagSpecification{
 				(&ec2.TagSpecification{}).
 					SetResourceType("security-group").
 					SetTags([]*ec2.Tag{
 						(&ec2.Tag{}).SetKey(cloud.SecurityGroupTag).SetValue("1"),
+						{Key: aws.String("Name"), Value: groupName},
 					}),
 			},
 		},
