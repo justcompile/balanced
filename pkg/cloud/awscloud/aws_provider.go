@@ -98,7 +98,9 @@ func (a *AWSProvider) ReconcileSecurityGroups(defs map[string]*types.LoadBalance
 		return insErr
 	}
 
-	secGroup, sGrpErr := a.upsertSecurityGroupRules(ports, a.lbSecurityGroupName, instances[0].VpcId, fullSync)
+	secGroupId := instances[0].SecurityGroups[0].GroupId
+
+	secGroup, sGrpErr := a.upsertSecurityGroupRules(ports, secGroupId, instances[0].VpcId, fullSync)
 	if sGrpErr != nil {
 		return sGrpErr
 	}
@@ -147,7 +149,7 @@ func (a *AWSProvider) UpsertRecordSet(domains []string) error {
 	return changeErr
 }
 
-func (a *AWSProvider) upsertSecurityGroupRules(ports types.Set[int64], lbSecurityGroup string, vpcId *string, fullSync bool) (*cloud.SecurityGroup, error) {
+func (a *AWSProvider) upsertSecurityGroupRules(ports types.Set[int64], lbSecurityGroupId, vpcId *string, fullSync bool) (*cloud.SecurityGroup, error) {
 	resp, err := a.ec2Client.DescribeSecurityGroups(
 		&ec2.DescribeSecurityGroupsInput{
 			Filters: []*ec2.Filter{
@@ -162,7 +164,7 @@ func (a *AWSProvider) upsertSecurityGroupRules(ports types.Set[int64], lbSecurit
 	}
 
 	if len(resp.SecurityGroups) == 0 {
-		return a.createSecurityGroup(ports, lbSecurityGroup, vpcId)
+		return a.createSecurityGroup(ports, lbSecurityGroupId, vpcId)
 	}
 
 	if len(resp.SecurityGroups) > 1 {
@@ -170,13 +172,13 @@ func (a *AWSProvider) upsertSecurityGroupRules(ports types.Set[int64], lbSecurit
 	}
 
 	if fullSync {
-		err = a.updateRules(resp.SecurityGroups[0], ports, lbSecurityGroup)
+		err = a.updateRules(resp.SecurityGroups[0], ports, lbSecurityGroupId, vpcId)
 	}
 
 	return &cloud.SecurityGroup{Id: aws.StringValue(resp.SecurityGroups[0].GroupId)}, err
 }
 
-func (a *AWSProvider) updateRules(grp *ec2.SecurityGroup, requiredPorts types.Set[int64], destinationGroupName string) error {
+func (a *AWSProvider) updateRules(grp *ec2.SecurityGroup, requiredPorts types.Set[int64], lbSecurityGroupId, vpcId *string) error {
 
 	existingPorts := types.Set[int64]{}
 	for _, perm := range grp.IpPermissions {
@@ -188,7 +190,7 @@ func (a *AWSProvider) updateRules(grp *ec2.SecurityGroup, requiredPorts types.Se
 	if len(portsToRemove) > 0 {
 		log.Infof("awscloud: removing ports %v from security group %s", portsToRemove, *grp.GroupId)
 		if _, err := a.ec2Client.RevokeSecurityGroupIngress(&ec2.RevokeSecurityGroupIngressInput{
-			IpPermissions: ipPermissionsFromPorts(portsToRemove, destinationGroupName),
+			IpPermissions: ipPermissionsFromPorts(portsToRemove, lbSecurityGroupId, vpcId),
 			GroupId:       grp.GroupId,
 		}); err != nil {
 			return fmt.Errorf("awscloud: an error occured removing ingress rules: %s", err)
@@ -199,7 +201,7 @@ func (a *AWSProvider) updateRules(grp *ec2.SecurityGroup, requiredPorts types.Se
 		log.Infof("awscloud: adding ports %v from security group %s", portsToAdd, *grp.GroupId)
 
 		input := &ec2.AuthorizeSecurityGroupIngressInput{
-			IpPermissions: ipPermissionsFromPorts(portsToAdd, destinationGroupName),
+			IpPermissions: ipPermissionsFromPorts(portsToAdd, lbSecurityGroupId, vpcId),
 			GroupId:       grp.GroupId,
 		}
 
@@ -213,7 +215,7 @@ func (a *AWSProvider) updateRules(grp *ec2.SecurityGroup, requiredPorts types.Se
 	return nil
 }
 
-func (a *AWSProvider) createSecurityGroup(ports types.Set[int64], destinationGroupName string, vpcId *string) (*cloud.SecurityGroup, error) {
+func (a *AWSProvider) createSecurityGroup(ports types.Set[int64], lbSecurityGroupId, vpcId *string) (*cloud.SecurityGroup, error) {
 	suffix := strings.Split(uuid.New().String(), "-")[0]
 	resp, err := a.ec2Client.CreateSecurityGroup(
 		&ec2.CreateSecurityGroupInput{
@@ -233,7 +235,7 @@ func (a *AWSProvider) createSecurityGroup(ports types.Set[int64], destinationGro
 		return nil, err
 	}
 
-	permissions := ipPermissionsFromPorts(ports, destinationGroupName)
+	permissions := ipPermissionsFromPorts(ports, lbSecurityGroupId, vpcId)
 
 	_, rulesErr := a.ec2Client.AuthorizeSecurityGroupIngress(&ec2.AuthorizeSecurityGroupIngressInput{
 		GroupId:       resp.GroupId,
@@ -310,9 +312,8 @@ func New(cfg *configuration.DNS) (*AWSProvider, error) {
 			TagValue:    meta.tagValue,
 			UsePublicIP: cfg.UsePublicAddress,
 		},
-		ec2Client:           ec2.New(sess),
-		lbSecurityGroupName: meta.securityGroupName,
-		r53Client:           route53.New(sess),
+		ec2Client: ec2.New(sess),
+		r53Client: route53.New(sess),
 	}
 
 	return p, nil

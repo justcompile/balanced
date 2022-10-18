@@ -21,7 +21,7 @@ func NetworkInterfaceHasGroup(ini *ec2.InstanceNetworkInterface, groupId string)
 	return groupIds, hasGroup
 }
 
-func ipPermissionsFromPorts(ports types.Set[int64], destinationGroupName string) []*ec2.IpPermission {
+func ipPermissionsFromPorts(ports types.Set[int64], destinationGroupId, vpcId *string) []*ec2.IpPermission {
 	perms := make([]*ec2.IpPermission, len(ports))
 	var i int
 
@@ -31,7 +31,7 @@ func ipPermissionsFromPorts(ports types.Set[int64], destinationGroupName string)
 			SetToPort(p).
 			SetIpProtocol(ec2.ProtocolTcp).
 			SetUserIdGroupPairs([]*ec2.UserIdGroupPair{
-				{GroupName: aws.String(destinationGroupName), Description: aws.String("Managed by balanced")},
+				{GroupId: destinationGroupId, VpcId: vpcId, Description: aws.String("Managed by balanced")},
 			})
 	}
 

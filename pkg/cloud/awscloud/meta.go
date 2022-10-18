@@ -2,16 +2,14 @@ package awscloud
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/aws/aws-sdk-go/aws/ec2metadata"
 	"github.com/aws/aws-sdk-go/aws/session"
 )
 
 type instanceMetaData struct {
-	region            string
-	securityGroupName string
-	tagValue          string
+	region   string
+	tagValue string
 }
 
 func getInstanceMetaData(tagKey string) (*instanceMetaData, error) {
@@ -26,14 +24,8 @@ func getInstanceMetaData(tagKey string) (*instanceMetaData, error) {
 		return nil, fmt.Errorf("awscloud: retrieving instance tagging information failed: %s", tagErr)
 	}
 
-	instanceSecurityGroups, secGrpErr := ec2meta.GetMetadata("security-groups")
-	if secGrpErr != nil {
-		return nil, fmt.Errorf("awscloud: retrieving instance security-groups failed: %s", secGrpErr)
-	}
-
 	return &instanceMetaData{
-		region:            az[:len(az)-1],
-		securityGroupName: strings.Fields(instanceSecurityGroups)[0],
-		tagValue:          tagValue,
+		region:   az[:len(az)-1],
+		tagValue: tagValue,
 	}, nil
 }
