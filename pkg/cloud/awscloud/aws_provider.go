@@ -195,7 +195,7 @@ func (a *AWSProvider) updateRules(grp *ec2.SecurityGroup, requiredPorts types.Se
 	if len(portsToAdd) > 0 {
 		log.Infof("awscloud: adding ports %v from security group %s", portsToAdd, *grp.GroupId)
 		if _, err := a.ec2Client.AuthorizeSecurityGroupIngress(&ec2.AuthorizeSecurityGroupIngressInput{
-			IpPermissions: ipPermissionsFromPorts(portsToRemove, destinationGroupId),
+			IpPermissions: ipPermissionsFromPorts(portsToAdd, destinationGroupId),
 			GroupId:       grp.GroupId,
 		}); err != nil {
 			return fmt.Errorf("awscloud: an error occured updating ingress rules: %s", err)
