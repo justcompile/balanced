@@ -1,6 +1,7 @@
 package k8s
 
 import (
+	"balanced/pkg/types"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -8,14 +9,14 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-func sliceToSetMap(val []string) map[string]struct{} {
-	m := make(map[string]struct{})
+func sliceToSetMap(val []string) types.Set[string] {
+	s := make(types.Set[string])
 
 	for _, v := range val {
-		m[v] = struct{}{}
+		s.Add(v)
 	}
 
-	return m
+	return s
 }
 
 func Test_endpointHasChanged(t *testing.T) {

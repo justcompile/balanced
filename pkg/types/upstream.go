@@ -24,6 +24,12 @@ type Server struct {
 	Id        string
 	IPAddress string
 	Port      int32
+	Meta      *ServerMeta
+}
+
+type ServerMeta struct {
+	Hostname string
+	NodeName string
 }
 
 func NewLoadBalancerDefinitionChange(domain string, endpoint *corev1.Endpoints) *Change {
@@ -44,6 +50,10 @@ func NewLoadBalancerDefinitionChange(domain string, endpoint *corev1.Endpoints) 
 				Id:        a.TargetRef.Name,
 				IPAddress: a.IP,
 				Port:      port,
+				Meta: &ServerMeta{
+					Hostname: a.Hostname,
+					NodeName: *a.NodeName,
+				},
 			})
 		}
 	}

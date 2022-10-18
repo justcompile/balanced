@@ -1,6 +1,7 @@
 package k8s
 
 import (
+	"balanced/pkg/types"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -24,40 +25,40 @@ func TestNamespaceFiltering(t *testing.T) {
 		"Should watch if no filters have been applied": {
 			endpoint,
 			&Watcher{
-				watchNamespaces:   make(map[string]struct{}),
-				excludeNamespaces: make(map[string]struct{}),
+				watchNamespaces:   make(types.Set[string]),
+				excludeNamespaces: make(types.Set[string]),
 			},
 			true,
 		},
 		"Should ignore if namespace has been excluded": {
 			endpoint,
 			&Watcher{
-				watchNamespaces:   make(map[string]struct{}),
-				excludeNamespaces: map[string]struct{}{"default": {}},
+				watchNamespaces:   make(types.Set[string]),
+				excludeNamespaces: types.Set[string]{"default": {}},
 			},
 			false,
 		},
 		"Should watch if namespace has not been excluded": {
 			endpoint,
 			&Watcher{
-				watchNamespaces:   make(map[string]struct{}),
-				excludeNamespaces: map[string]struct{}{"foobar": {}},
+				watchNamespaces:   make(types.Set[string]),
+				excludeNamespaces: types.Set[string]{"foobar": {}},
 			},
 			true,
 		},
 		"Should watch if namespace has been explicitly specified": {
 			endpoint,
 			&Watcher{
-				watchNamespaces:   map[string]struct{}{"default": {}},
-				excludeNamespaces: make(map[string]struct{}),
+				watchNamespaces:   types.Set[string]{"default": {}},
+				excludeNamespaces: make(types.Set[string]),
 			},
 			true,
 		},
 		"Should not watch if namespaces have been specified and isn't in that list": {
 			endpoint,
 			&Watcher{
-				watchNamespaces:   map[string]struct{}{"foobar": {}},
-				excludeNamespaces: make(map[string]struct{}),
+				watchNamespaces:   types.Set[string]{"foobar": {}},
+				excludeNamespaces: make(types.Set[string]),
 			},
 			false,
 		},

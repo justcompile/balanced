@@ -1,4 +1,4 @@
-package cloud
+package awscloud
 
 import (
 	"github.com/aws/aws-sdk-go/service/ec2"

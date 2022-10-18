@@ -4,6 +4,7 @@ import (
 	"net"
 	"testing"
 
+	"github.com/aws/aws-sdk-go/aws"
 	"github.com/stretchr/testify/assert"
 	corev1 "k8s.io/api/core/v1"
 )
@@ -23,7 +24,7 @@ func TestLoadBalancerUpstreamDefinitionFromK8sEndpoint(t *testing.T) {
 				Subsets: []corev1.EndpointSubset{
 					{
 						Addresses: []corev1.EndpointAddress{
-							{IP: "10.1.1.1", TargetRef: &corev1.ObjectReference{Name: "my-pod-1"}},
+							{IP: "10.1.1.1", TargetRef: &corev1.ObjectReference{Name: "my-pod-1"}, NodeName: aws.String("node-1")},
 						},
 						Ports: []corev1.EndpointPort{{Port: 8443}},
 					},
@@ -33,7 +34,7 @@ func TestLoadBalancerUpstreamDefinitionFromK8sEndpoint(t *testing.T) {
 				Obj: &LoadBalancerUpstreamDefinition{
 					Domain: domain,
 					Servers: []*Server{
-						{Id: "my-pod-1", IPAddress: "10.1.1.1", Port: 8443},
+						{Id: "my-pod-1", IPAddress: "10.1.1.1", Port: 8443, Meta: &ServerMeta{NodeName: "node-1"}},
 					},
 				},
 			},
