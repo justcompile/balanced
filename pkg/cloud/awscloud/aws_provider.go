@@ -37,10 +37,11 @@ func getAWSSession(region string) (*session.Session, error) {
 }
 
 type AWSProvider struct {
-	cfg       *configuration.DNS
-	lookup    *cloud.LookupConfig
-	ec2Client ec2iface.EC2API
-	r53Client route53iface.Route53API
+	cfg                 *configuration.DNS
+	lbSecurityGroupName string
+	lookup              *cloud.LookupConfig
+	ec2Client           ec2iface.EC2API
+	r53Client           route53iface.Route53API
 }
 
 func (a *AWSProvider) GetAddresses(cfg *cloud.LookupConfig) ([]string, error) {
@@ -97,7 +98,7 @@ func (a *AWSProvider) ReconcileSecurityGroups(defs map[string]*types.LoadBalance
 		return insErr
 	}
 
-	secGroup, sGrpErr := a.upsertSecurityGroupRules(ports, "", instances[0].VpcId, fullSync)
+	secGroup, sGrpErr := a.upsertSecurityGroupRules(ports, a.lbSecurityGroupName, instances[0].VpcId, fullSync)
 	if sGrpErr != nil {
 		return sGrpErr
 	}
@@ -175,7 +176,7 @@ func (a *AWSProvider) upsertSecurityGroupRules(ports types.Set[int64], lbSecurit
 	return &cloud.SecurityGroup{Id: aws.StringValue(resp.SecurityGroups[0].GroupId)}, err
 }
 
-func (a *AWSProvider) updateRules(grp *ec2.SecurityGroup, requiredPorts types.Set[int64], destinationGroupId string) error {
+func (a *AWSProvider) updateRules(grp *ec2.SecurityGroup, requiredPorts types.Set[int64], destinationGroupName string) error {
 
 	existingPorts := types.Set[int64]{}
 	for _, perm := range grp.IpPermissions {
@@ -187,7 +188,7 @@ func (a *AWSProvider) updateRules(grp *ec2.SecurityGroup, requiredPorts types.Se
 	if len(portsToRemove) > 0 {
 		log.Infof("awscloud: removing ports %v from security group %s", portsToRemove, *grp.GroupId)
 		if _, err := a.ec2Client.RevokeSecurityGroupIngress(&ec2.RevokeSecurityGroupIngressInput{
-			IpPermissions: ipPermissionsFromPorts(portsToRemove, destinationGroupId),
+			IpPermissions: ipPermissionsFromPorts(portsToRemove, destinationGroupName),
 			GroupId:       grp.GroupId,
 		}); err != nil {
 			return fmt.Errorf("awscloud: an error occured removing ingress rules: %s", err)
@@ -198,7 +199,7 @@ func (a *AWSProvider) updateRules(grp *ec2.SecurityGroup, requiredPorts types.Se
 		log.Infof("awscloud: adding ports %v from security group %s", portsToAdd, *grp.GroupId)
 
 		input := &ec2.AuthorizeSecurityGroupIngressInput{
-			IpPermissions: ipPermissionsFromPorts(portsToAdd, destinationGroupId),
+			IpPermissions: ipPermissionsFromPorts(portsToAdd, destinationGroupName),
 			GroupId:       grp.GroupId,
 		}
 
@@ -212,7 +213,7 @@ func (a *AWSProvider) updateRules(grp *ec2.SecurityGroup, requiredPorts types.Se
 	return nil
 }
 
-func (a *AWSProvider) createSecurityGroup(ports types.Set[int64], lbSecurityGroupId string, vpcId *string) (*cloud.SecurityGroup, error) {
+func (a *AWSProvider) createSecurityGroup(ports types.Set[int64], destinationGroupName string, vpcId *string) (*cloud.SecurityGroup, error) {
 	suffix := strings.Split(uuid.New().String(), "-")[0]
 	resp, err := a.ec2Client.CreateSecurityGroup(
 		&ec2.CreateSecurityGroupInput{
@@ -232,7 +233,7 @@ func (a *AWSProvider) createSecurityGroup(ports types.Set[int64], lbSecurityGrou
 		return nil, err
 	}
 
-	permissions := ipPermissionsFromPorts(ports, lbSecurityGroupId)
+	permissions := ipPermissionsFromPorts(ports, destinationGroupName)
 
 	_, rulesErr := a.ec2Client.AuthorizeSecurityGroupIngress(&ec2.AuthorizeSecurityGroupIngressInput{
 		GroupId:       resp.GroupId,
@@ -309,8 +310,9 @@ func New(cfg *configuration.DNS) (*AWSProvider, error) {
 			TagValue:    meta.tagValue,
 			UsePublicIP: cfg.UsePublicAddress,
 		},
-		ec2Client: ec2.New(sess),
-		r53Client: route53.New(sess),
+		ec2Client:           ec2.New(sess),
+		lbSecurityGroupName: meta.securityGroupName,
+		r53Client:           route53.New(sess),
 	}
 
 	return p, nil
