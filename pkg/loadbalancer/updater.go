@@ -90,10 +90,12 @@ func (u *Updater) Start(changes chan *types.Change) {
 				log.Error(err)
 			}
 
-			if err := u.p.UpsertRecordSet(domains); err != nil {
-				log.Error(err)
-				// don't empty the domain buffer on error
-				continue
+			if u.cfg.DNS.Enabled {
+				if err := u.p.UpsertRecordSet(domains); err != nil {
+					log.Error(err)
+					// don't empty the domain buffer on error
+					continue
+				}
 			}
 			domains = make([]string, 0)
 		}

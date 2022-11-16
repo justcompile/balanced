@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 
 	log "github.com/sirupsen/logrus"
@@ -15,36 +16,36 @@ import (
 type serviceCache struct {
 	cfg           *configuration.KubeConfig
 	clientset     kubernetes.Interface
-	domainMapping map[string]string
+	domainMapping map[string][]string
 	mx            *sync.RWMutex
 }
 
-func (s *serviceCache) lookupDomainForService(ctx context.Context, ns *namespaceNameKey) string {
+func (s *serviceCache) lookupDomainForService(ctx context.Context, ns *namespaceNameKey) []string {
 	s.mx.RLock()
 	defer s.mx.RUnlock()
 	if _, exists := s.domainMapping[ns.String()]; !exists {
-		domain, err := s.getDomainFromServiceAnnotation(ctx, ns)
+		domains, err := s.getDomainFromServiceAnnotation(ctx, ns)
 		if err != nil {
 			if errors.Is(err, &ignoreService{}) {
 				log.Warn(err)
 			} else {
 				log.Error(err.Error())
 			}
-			return ""
+			return nil
 		}
 
-		if domain != "" {
-			s.domainMapping[ns.String()] = domain
+		if len(domains) > 0 {
+			s.domainMapping[ns.String()] = domains
 		}
 	}
 
 	return s.domainMapping[ns.String()]
 }
 
-func (s *serviceCache) getDomainFromServiceAnnotation(ctx context.Context, ns *namespaceNameKey) (string, error) {
+func (s *serviceCache) getDomainFromServiceAnnotation(ctx context.Context, ns *namespaceNameKey) ([]string, error) {
 	svc, err := s.clientset.CoreV1().Services(ns.namespace).Get(ctx, ns.name, metav1.GetOptions{})
 	if err != nil {
-		return "", fmt.Errorf("error retrieving service %s => %s", ns, err.Error())
+		return nil, fmt.Errorf("error retrieving service %s => %s", ns, err.Error())
 	}
 
 	var domain string
@@ -52,14 +53,14 @@ func (s *serviceCache) getDomainFromServiceAnnotation(ctx context.Context, ns *n
 
 	annotations := svc.GetAnnotations()
 	if id := annotations[s.cfg.LoadBalancerIdAnnotationKey()]; id != s.cfg.ServiceAnnotationLoadBalancerId {
-		return "", &ignoreService{service: ns.String(), reason: fmt.Sprintf("annotation %s empty or does not match this load balancer id: %s", s.cfg.LoadBalancerIdAnnotationKey(), s.cfg.ServiceAnnotationLoadBalancerId)}
+		return nil, &ignoreService{service: ns.String(), reason: fmt.Sprintf("annotation %s empty or does not match this load balancer id: %s", s.cfg.LoadBalancerIdAnnotationKey(), s.cfg.ServiceAnnotationLoadBalancerId)}
 	}
 
 	if domain, exists = annotations[s.cfg.DomainAnnotationKey()]; !exists {
-		return "", &ignoreService{service: ns.String(), reason: fmt.Sprintf("annotation %s cannot be found", s.cfg.DomainAnnotationKey())}
+		return nil, &ignoreService{service: ns.String(), reason: fmt.Sprintf("annotation %s cannot be found", s.cfg.DomainAnnotationKey())}
 	}
 
-	return domain, nil
+	return strings.Split(domain, ","), nil
 }
 
 func (s *serviceCache) removeServiceRecord(ctx context.Context, ns *namespaceNameKey) {
@@ -73,7 +74,7 @@ func newServiceCache(cfg *configuration.KubeConfig, clientset kubernetes.Interfa
 	return &serviceCache{
 		cfg:           cfg,
 		clientset:     clientset,
-		domainMapping: make(map[string]string),
+		domainMapping: make(map[string][]string),
 		mx:            &sync.RWMutex{},
 	}
 }
