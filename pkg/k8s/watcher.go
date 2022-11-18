@@ -8,6 +8,7 @@ import (
 
 	log "github.com/sirupsen/logrus"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kubeinformers "k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
@@ -92,7 +93,16 @@ func (w *Watcher) setup() chan *types.Change {
 		UpdateFunc: func(oldObj, newObj interface{}) {
 			svc := oldObj.(*corev1.Service)
 			if shouldWatchResource(w, svc) {
-				w.serviceCache.removeServiceRecord(context.Background(), namespacedResourceToKey(svc))
+				key := namespacedResourceToKey(svc)
+				w.serviceCache.removeServiceRecord(context.Background(), key)
+
+				endpoint, err := w.getEndpointFromService(svc)
+				if err != nil {
+					log.Errorf("unable to retrieve endpoint for svc: %s", key)
+					return
+				}
+
+				w.handleChange(c, endpoint)
 			}
 		},
 		DeleteFunc: func(obj interface{}) {
@@ -111,16 +121,7 @@ func (w *Watcher) setup() chan *types.Change {
 				return
 			}
 
-			key := namespacedResourceToKey(endpoint)
-
-			domain := w.serviceCache.lookupDomainForService(context.Background(), key)
-			if domain == "" {
-				return
-			}
-
-			log.Infof("endpoint added: %s", key)
-
-			c <- types.NewLoadBalancerDefinitionChange(domain, endpoint)
+			w.handleChange(c, endpoint)
 		},
 		DeleteFunc: func(obj interface{}) {
 			key := namespacedResourceToKey(obj.(*corev1.Endpoints))
@@ -136,19 +137,29 @@ func (w *Watcher) setup() chan *types.Change {
 			}
 
 			if endpointHasChanged(oldEndpoint, newEndpoint) {
-				key := namespacedResourceToKey(newEndpoint)
-
-				log.Infof("endpoint %s changed", key)
-
-				domain := w.serviceCache.lookupDomainForService(context.Background(), key)
-				if domain == "" {
-					return
-				}
-				c <- types.NewLoadBalancerDefinitionChange(domain, newEndpoint)
+				w.handleChange(c, newEndpoint)
 			}
 		},
 	})
 
 	w.informer = kubeInformerFactory
 	return c
+}
+
+func (w *Watcher) getEndpointFromService(s *corev1.Service) (*corev1.Endpoints, error) {
+	return w.clientset.CoreV1().Endpoints(s.Namespace).Get(context.Background(), s.Name, metav1.GetOptions{})
+}
+
+func (w *Watcher) handleChange(c chan *types.Change, e *corev1.Endpoints) {
+	key := namespacedResourceToKey(e)
+
+	log.Infof("endpoint %s changed", key)
+
+	domains := w.serviceCache.lookupDomainForService(context.Background(), key)
+	if len(domains) == 0 {
+		return
+	}
+	for _, domain := range domains {
+		c <- types.NewLoadBalancerDefinitionChange(domain, e)
+	}
 }

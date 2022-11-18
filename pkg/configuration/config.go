@@ -63,7 +63,7 @@ type KubeConfig struct {
 
 func (k *KubeConfig) DomainAnnotationKey() string {
 	prefix := strings.TrimSuffix(k.ServiceAnnotationKeyPrefix, "/")
-	return fmt.Sprintf("%s/domain", prefix)
+	return fmt.Sprintf("%s/domains", prefix)
 }
 
 func (k *KubeConfig) LoadBalancerIdAnnotationKey() string {

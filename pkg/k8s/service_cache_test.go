@@ -14,15 +14,15 @@ import (
 
 func TestServiceCache_getDomainFromServiceAnnotation(t *testing.T) {
 	tests := map[string]struct {
-		services       []*v1.Service
-		namespaceKey   *namespaceNameKey
-		expectedDomain string
-		expectedErr    error
+		services        []*v1.Service
+		namespaceKey    *namespaceNameKey
+		expectedDomains []string
+		expectedErr     error
 	}{
 		"returns error if service cannot be found": {
 			nil,
 			&namespaceNameKey{name: "foo", namespace: "bar"},
-			"",
+			nil,
 			errors.New("error retrieving service foo:bar => does not exist"),
 		},
 		"returns error if domain annotation not found on service": {
@@ -38,8 +38,8 @@ func TestServiceCache_getDomainFromServiceAnnotation(t *testing.T) {
 				},
 			},
 			&namespaceNameKey{name: "foo", namespace: "bar"},
-			"",
-			&ignoreService{service: "foo:bar", reason: "annotation my.uri/domain cannot be found"},
+			nil,
+			&ignoreService{service: "foo:bar", reason: "annotation my.uri/domains cannot be found"},
 		},
 		"returns domain if annotation found on service and lb id matches": {
 			[]*v1.Service{
@@ -48,14 +48,14 @@ func TestServiceCache_getDomainFromServiceAnnotation(t *testing.T) {
 						Name:      "foo",
 						Namespace: "bar",
 						Annotations: map[string]string{
-							"my.uri/domain":           "foobar.com",
+							"my.uri/domains":          "foobar.com",
 							"my.uri/load-balancer-id": "testing",
 						},
 					},
 				},
 			},
 			&namespaceNameKey{name: "foo", namespace: "bar"},
-			"foobar.com",
+			[]string{"foobar.com"},
 			nil,
 		},
 		"returns ignore error if annotation found on service but id does not match": {
@@ -65,13 +65,13 @@ func TestServiceCache_getDomainFromServiceAnnotation(t *testing.T) {
 						Name:      "foo",
 						Namespace: "bar",
 						Annotations: map[string]string{
-							"my.uri/domain": "foobar.com",
+							"my.uri/domains": "foobar.com",
 						},
 					},
 				},
 			},
 			&namespaceNameKey{name: "foo", namespace: "bar"},
-			"",
+			nil,
 			&ignoreService{service: "foo:bar", reason: "annotation my.uri/load-balancer-id empty or does not match this load balancer id: testing"},
 		},
 	}
@@ -85,33 +85,33 @@ func TestServiceCache_getDomainFromServiceAnnotation(t *testing.T) {
 			clientset: &mockClientset{services: test.services},
 		}
 
-		domain, err := s.getDomainFromServiceAnnotation(context.TODO(), test.namespaceKey)
+		domains, err := s.getDomainFromServiceAnnotation(context.TODO(), test.namespaceKey)
 
 		assert.Equal(t, test.expectedErr, err, name)
-		assert.Equal(t, test.expectedDomain, domain, name)
+		assert.Equal(t, test.expectedDomains, domains, name)
 	}
 }
 
 func TestServiceCache_lookupDomainForService(t *testing.T) {
 	tests := map[string]struct {
-		services       []*v1.Service
-		cache          map[string]string
-		namespaceKey   *namespaceNameKey
-		expectedDomain string
-		expectedErr    error
+		services        []*v1.Service
+		cache           map[string][]string
+		namespaceKey    *namespaceNameKey
+		expectedDomains []string
+		expectedErr     error
 	}{
 		"returns error if service is not in cache and cannot be found": {
 			nil,
-			make(map[string]string),
+			make(map[string][]string),
 			&namespaceNameKey{name: "foo", namespace: "bar"},
-			"",
+			nil,
 			errors.New("error retrieving service foo:bar => does not exist"),
 		},
 		"returns domain from cache if already set": {
 			nil, // will result in an error if value is not in cache
-			map[string]string{"foo:bar": "foobar.example.com"},
+			map[string][]string{"foo:bar": {"foobar.example.com"}},
 			&namespaceNameKey{name: "foo", namespace: "bar"},
-			"foobar.example.com",
+			[]string{"foobar.example.com"},
 			nil,
 		},
 		"does not retrieve domain from service annotation if available but id does not match": {
@@ -121,14 +121,14 @@ func TestServiceCache_lookupDomainForService(t *testing.T) {
 						Name:      "foo",
 						Namespace: "bar",
 						Annotations: map[string]string{
-							"my.uri/domain": "foobar.com",
+							"my.uri/domains": "foobar.com",
 						},
 					},
 				},
 			},
-			make(map[string]string),
+			make(map[string][]string),
 			&namespaceNameKey{name: "foo", namespace: "bar"},
-			"",
+			nil,
 			nil,
 		},
 		"retrieves domain from service annotation if available and id matches": {
@@ -138,15 +138,15 @@ func TestServiceCache_lookupDomainForService(t *testing.T) {
 						Name:      "foo",
 						Namespace: "bar",
 						Annotations: map[string]string{
-							"my.uri/domain":           "foobar.com",
+							"my.uri/domains":          "foobar.com",
 							"my.uri/load-balancer-id": "testing",
 						},
 					},
 				},
 			},
-			make(map[string]string),
+			make(map[string][]string),
 			&namespaceNameKey{name: "foo", namespace: "bar"},
-			"foobar.com",
+			[]string{"foobar.com"},
 			nil,
 		},
 	}
@@ -162,32 +162,32 @@ func TestServiceCache_lookupDomainForService(t *testing.T) {
 
 		s.domainMapping = test.cache
 
-		domain := s.lookupDomainForService(context.TODO(), test.namespaceKey)
+		domains := s.lookupDomainForService(context.TODO(), test.namespaceKey)
 
-		assert.Equal(t, test.expectedDomain, domain, name)
+		assert.Equal(t, test.expectedDomains, domains, name)
 	}
 }
 
 func TestServiceCache_removeServiceRecord(t *testing.T) {
 	tests := map[string]struct {
-		initialCache map[string]string
+		initialCache map[string][]string
 		namespaceKey *namespaceNameKey
-		expected     map[string]string
+		expected     map[string][]string
 	}{
 		"does not panic if record does not exist": {
-			make(map[string]string),
+			make(map[string][]string),
 			&namespaceNameKey{name: "foo", namespace: "bar"},
-			make(map[string]string),
+			make(map[string][]string),
 		},
 		"does remove record if record exists": {
-			map[string]string{"foo:bar": "fizzbuzz"},
+			map[string][]string{"foo:bar": {"fizzbuzz"}},
 			&namespaceNameKey{name: "foo", namespace: "bar"},
-			make(map[string]string),
+			make(map[string][]string),
 		},
 		"cache is unaffected if record does not exist": {
-			map[string]string{"foo:bar": "fizzbuzz"},
+			map[string][]string{"foo:bar": {"fizzbuzz"}},
 			&namespaceNameKey{name: "fizz", namespace: "bar"},
-			map[string]string{"foo:bar": "fizzbuzz"},
+			map[string][]string{"foo:bar": {"fizzbuzz"}},
 		},
 	}
 
