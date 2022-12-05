@@ -153,13 +153,20 @@ func (w *Watcher) getEndpointFromService(s *corev1.Service) (*corev1.Endpoints, 
 func (w *Watcher) handleChange(c chan *types.Change, e *corev1.Endpoints) {
 	key := namespacedResourceToKey(e)
 
-	log.Infof("endpoint %s changed", key)
-
 	domains := w.serviceCache.lookupDomainForService(context.Background(), key)
 	if len(domains) == 0 {
 		return
 	}
 	for _, domain := range domains {
-		c <- types.NewLoadBalancerDefinitionChange(domain, e)
+		def := types.NewLoadBalancerDefinitionChange(domain, e)
+
+		if len(def.Obj.Servers) == 0 {
+			log.Warnf("endpoint %s changed but endpoint has 0 ready addresses", key)
+			continue
+		}
+
+		log.Infof("endpoint %s changed, queuing update", key)
+
+		c <- def
 	}
 }
