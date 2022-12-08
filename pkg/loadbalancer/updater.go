@@ -5,6 +5,7 @@ import (
 	"balanced/pkg/cloud/awscloud"
 	"balanced/pkg/configuration"
 	"balanced/pkg/types"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -27,7 +28,11 @@ func NewUpdater(cfg *configuration.Config) (*Updater, error) {
 		return nil, err
 	}
 
-	p, err := awscloud.New(cfg.Cloud.AWS, &cfg.DNS)
+	if cfg.Cloud.AWS == nil {
+		return nil, errors.New("awscloud configuration has not been set")
+	}
+
+	p, err := awscloud.New(cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -41,10 +46,11 @@ func NewUpdater(cfg *configuration.Config) (*Updater, error) {
 }
 
 type Updater struct {
-	cfg   *configuration.Config
-	r     *Renderer
-	p     cloud.CloudProvider
-	cache map[string]*types.LoadBalancerUpstreamDefinition
+	cfg            *configuration.Config
+	r              *Renderer
+	p              cloud.CloudProvider
+	cache          map[string]*types.LoadBalancerUpstreamDefinition
+	reloadRequired bool
 }
 
 func (u *Updater) Start(changes chan *types.Change) {
@@ -90,6 +96,16 @@ func (u *Updater) Start(changes chan *types.Change) {
 				log.Error(err)
 			}
 
+			if u.reloadRequired {
+				u.reloadRequired = false
+
+				if reloadErr := u.reloadProcess(); reloadErr != nil {
+					log.Error(reloadErr)
+				}
+
+				log.Debugf("process reloaded successfully")
+			}
+
 			if u.cfg.DNS.Enabled {
 				if err := u.p.UpsertRecordSet(domains); err != nil {
 					log.Error(err)
@@ -114,8 +130,38 @@ func (u *Updater) shouldProcessChange(change *types.Change) bool {
 
 func (u *Updater) handleChange(change *types.LoadBalancerUpstreamDefinition) error {
 	filename := strings.ReplaceAll(change.Domain, ".", "_") + ".cfg"
+	tmpFilePath := filepath.Join("/tmp", filename)
+
+	if tmpErr := u.tryWriteToFile(tmpFilePath, change); tmpErr != nil {
+		return tmpErr
+	}
+
 	fullFilePath := filepath.Join(u.cfg.LoadBalancer.ConfigDir, filename)
 
+	areEq, err := checksumsEqual(tmpFilePath, fullFilePath)
+	if err != nil {
+		return err
+	}
+
+	if areEq {
+		log.Debugf("configuration for %s domain is already up to date, skipping", change.Domain)
+		return nil
+	}
+
+	log.Debugf("configuration for %s domain has changed, updating", change.Domain)
+
+	if fErr := u.tryWriteToFile(fullFilePath, change); fErr != nil {
+		return fErr
+	}
+
+	log.Debugf("successfully updated configuration file %s", fullFilePath)
+	log.Debug("reload required")
+	u.reloadRequired = true
+
+	return nil
+}
+
+func (u *Updater) tryWriteToFile(fullFilePath string, change *types.LoadBalancerUpstreamDefinition) error {
 	f, fErr := os.OpenFile(fullFilePath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
 
 	if fErr != nil {
@@ -124,10 +170,6 @@ func (u *Updater) handleChange(change *types.LoadBalancerUpstreamDefinition) err
 
 	if wErr := u.r.ToWriter(f, change); wErr != nil {
 		return fmt.Errorf("unable to write to file %s: %s", fullFilePath, wErr)
-	}
-
-	if reloadErr := u.reloadProcess(); reloadErr != nil {
-		return fmt.Errorf("error reloading loadbalancer configuration after update: %s", reloadErr)
 	}
 
 	return nil

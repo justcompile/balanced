@@ -26,9 +26,11 @@ func (s *serviceCache) lookupDomainForService(ctx context.Context, ns *namespace
 	if _, exists := s.domainMapping[ns.String()]; !exists {
 		domains, err := s.getDomainFromServiceAnnotation(ctx, ns)
 		if err != nil {
-			if errors.Is(err, &ignoreService{}) {
+			var ign *IgnoreService
+			if errors.As(err, &ign) {
 				log.Warn(err)
 			} else {
+				log.Errorf("%T", err)
 				log.Error(err.Error())
 			}
 			return nil
@@ -53,11 +55,11 @@ func (s *serviceCache) getDomainFromServiceAnnotation(ctx context.Context, ns *n
 
 	annotations := svc.GetAnnotations()
 	if id := annotations[s.cfg.LoadBalancerIdAnnotationKey()]; id != s.cfg.ServiceAnnotationLoadBalancerId {
-		return nil, &ignoreService{service: ns.String(), reason: fmt.Sprintf("annotation %s empty or does not match this load balancer id: %s", s.cfg.LoadBalancerIdAnnotationKey(), s.cfg.ServiceAnnotationLoadBalancerId)}
+		return nil, &IgnoreService{service: ns.String(), reason: fmt.Sprintf("annotation %s empty or does not match this load balancer id: %s", s.cfg.LoadBalancerIdAnnotationKey(), s.cfg.ServiceAnnotationLoadBalancerId)}
 	}
 
 	if domain, exists = annotations[s.cfg.DomainAnnotationKey()]; !exists {
-		return nil, &ignoreService{service: ns.String(), reason: fmt.Sprintf("annotation %s cannot be found", s.cfg.DomainAnnotationKey())}
+		return nil, &IgnoreService{service: ns.String(), reason: fmt.Sprintf("annotation %s cannot be found", s.cfg.DomainAnnotationKey())}
 	}
 
 	return strings.Split(domain, ","), nil

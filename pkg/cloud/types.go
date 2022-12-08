@@ -1,6 +1,8 @@
 package cloud
 
-import "balanced/pkg/types"
+import (
+	"balanced/pkg/types"
+)
 
 const (
 	SecurityGroupTag = "balanced:managed"

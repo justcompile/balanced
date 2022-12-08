@@ -97,6 +97,8 @@ func (a *AWSProvider) ReconcileSecurityGroups(defs map[string]*types.LoadBalance
 		return errors.New("node list is empty, not reconciling security groups")
 	}
 
+	log.Debugf("getting instances from Node names: %v", nodes)
+
 	instances, insErr := a.getInstancesFromDNSNames(nodes)
 	if insErr != nil {
 		return insErr
@@ -108,6 +110,8 @@ func (a *AWSProvider) ReconcileSecurityGroups(defs map[string]*types.LoadBalance
 	if sGrpErr != nil {
 		return sGrpErr
 	}
+
+	log.Debugf("upserted security group rules")
 
 	return a.associateSecurityGroupToInstances(secGroup, instances)
 }
@@ -122,15 +126,18 @@ func (a *AWSProvider) UpsertRecordSet(domains []string) error {
 		return err
 	}
 
-	records := make([]*route53.ResourceRecord, len(addresses))
-	for i, addr := range addresses {
-		records[i] = &route53.ResourceRecord{
-			Value: aws.String(addr),
-		}
-	}
-
-	changes := make([]*route53.Change, len(domains))
+	changes := make([]*route53.Change, 0)
 	for i, domain := range domains {
+		records, err := a.getAddressesForDomain(domain, addresses)
+		if err != nil {
+			return err
+		}
+
+		if len(records) == 0 {
+			log.Infof("no new addresses detected for DNS record %s, skipping", domain)
+			continue
+		}
+
 		changes[i] = &route53.Change{
 			Action: aws.String(route53.ChangeActionUpsert),
 			ResourceRecordSet: &route53.ResourceRecordSet{
@@ -151,6 +158,43 @@ func (a *AWSProvider) UpsertRecordSet(domains []string) error {
 
 	_, changeErr := a.r53Client.ChangeResourceRecordSets(input)
 	return changeErr
+}
+
+func (a *AWSProvider) getAddressesForDomain(domain string, addressesToAdd []string) ([]*route53.ResourceRecord, error) {
+	input := &route53.ListResourceRecordSetsInput{
+		HostedZoneId:    aws.String(a.cfg.HostedZoneId),
+		StartRecordName: aws.String(domain),
+		StartRecordType: aws.String(a.cfg.Type),
+	}
+
+	resp, err := a.r53Client.ListResourceRecordSets(input)
+	if err != nil {
+		return nil, fmt.Errorf("unable to locate resource records for domain %s: %s", domain, err)
+	}
+
+	existing := make([]*route53.ResourceRecord, 0)
+
+	if len(resp.ResourceRecordSets) >= 1 {
+		existing = resp.ResourceRecordSets[0].ResourceRecords
+	}
+
+	values := make(types.Set[string])
+
+	for _, v := range existing {
+		values.Add(*v.Value)
+	}
+	values.Add(addressesToAdd...)
+
+	records := make([]*route53.ResourceRecord, len(values))
+	i := 0
+	for addr := range values {
+		records[i] = &route53.ResourceRecord{
+			Value: aws.String(addr),
+		}
+		i++
+	}
+
+	return records, nil
 }
 
 func (a *AWSProvider) upsertSecurityGroupRules(ports types.Set[int64], lbSecurityGroupId, vpcId *string, fullSync bool) (*cloud.SecurityGroup, error) {
@@ -174,6 +218,7 @@ func (a *AWSProvider) upsertSecurityGroupRules(ports types.Set[int64], lbSecurit
 	}
 
 	if len(resp.SecurityGroups) == 0 {
+		log.Debugf("security group with tag %s not found", cloud.SecurityGroupTag)
 		return a.createSecurityGroup(ports, lbSecurityGroupId, vpcId)
 	}
 
@@ -270,6 +315,7 @@ func (a *AWSProvider) associateSecurityGroupToInstances(secGroup *cloud.Security
 	for _, instance := range instances {
 		for _, ni := range instance.NetworkInterfaces {
 			if groupIds, exists := NetworkInterfaceHasGroup(ni, secGroup.Id); !exists {
+				log.Debugf("associating security group %s to Network Interface %s on instance %s", secGroup.Id, *ni.NetworkInterfaceId, *instance.InstanceId)
 				groupIds = append(groupIds, &secGroup.Id)
 				if _, err := a.ec2Client.ModifyNetworkInterfaceAttribute(&ec2.ModifyNetworkInterfaceAttributeInput{
 					NetworkInterfaceId: ni.NetworkInterfaceId,
@@ -312,8 +358,8 @@ func (a *AWSProvider) getInstancesFromDNSNames(names types.Set[string]) ([]*ec2.
 	return instances, nil
 }
 
-func New(cfg *configuration.AWS, dnsCfg *configuration.DNS) (*AWSProvider, error) {
-	meta, err := getInstanceMetaData(dnsCfg.TagKey)
+func New(cfg *configuration.Config) (*AWSProvider, error) {
+	meta, err := getInstanceMetaData(cfg.DNS.TagKey)
 	if err != nil {
 		return nil, err
 	}
@@ -324,13 +370,13 @@ func New(cfg *configuration.AWS, dnsCfg *configuration.DNS) (*AWSProvider, error
 	}
 
 	p := &AWSProvider{
-		cfg:      cfg,
-		dnsCfg:   dnsCfg,
+		cfg:      cfg.Cloud.AWS,
+		dnsCfg:   &cfg.DNS,
 		metaData: meta,
 		lookup: &cloud.LookupConfig{
-			TagKey:      dnsCfg.TagKey,
+			TagKey:      cfg.DNS.TagKey,
 			TagValue:    meta.tagValue,
-			UsePublicIP: dnsCfg.UsePublicAddress,
+			UsePublicIP: cfg.DNS.UsePublicAddress,
 		},
 		ec2Client: ec2.New(sess),
 		r53Client: route53.New(sess),
