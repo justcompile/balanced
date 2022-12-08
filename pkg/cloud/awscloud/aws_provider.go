@@ -178,7 +178,7 @@ func (a *AWSProvider) getAddressesForDomain(domain string, addressesToAdd []stri
 		existing = resp.ResourceRecordSets[0].ResourceRecords
 	}
 
-	var values types.Set[string]
+	values := make(types.Set[string])
 
 	for _, v := range existing {
 		values.Add(*v.Value)
@@ -317,13 +317,12 @@ func (a *AWSProvider) associateSecurityGroupToInstances(secGroup *cloud.Security
 			if groupIds, exists := NetworkInterfaceHasGroup(ni, secGroup.Id); !exists {
 				log.Debugf("associating security group %s to Network Interface %s on instance %s", secGroup.Id, *ni.NetworkInterfaceId, *instance.InstanceId)
 				groupIds = append(groupIds, &secGroup.Id)
-				log.Info(groupIds)
-				// if _, err := a.ec2Client.ModifyNetworkInterfaceAttribute(&ec2.ModifyNetworkInterfaceAttributeInput{
-				// 	NetworkInterfaceId: ni.NetworkInterfaceId,
-				// 	Groups:             groupIds,
-				// }); err != nil {
-				// 	log.Error(err)
-				// }
+				if _, err := a.ec2Client.ModifyNetworkInterfaceAttribute(&ec2.ModifyNetworkInterfaceAttributeInput{
+					NetworkInterfaceId: ni.NetworkInterfaceId,
+					Groups:             groupIds,
+				}); err != nil {
+					log.Error(err)
+				}
 			}
 		}
 	}
@@ -359,7 +358,7 @@ func (a *AWSProvider) getInstancesFromDNSNames(names types.Set[string]) ([]*ec2.
 	return instances, nil
 }
 
-func New(cfg *configuration.Config) (cloud.CloudProvider, error) {
+func New(cfg *configuration.Config) (*AWSProvider, error) {
 	meta, err := getInstanceMetaData(cfg.DNS.TagKey)
 	if err != nil {
 		return nil, err
@@ -384,8 +383,4 @@ func New(cfg *configuration.Config) (cloud.CloudProvider, error) {
 	}
 
 	return p, nil
-}
-
-func init() {
-	cloud.RegisterProvider("aws", New)
 }

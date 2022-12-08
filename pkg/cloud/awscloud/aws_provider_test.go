@@ -8,6 +8,7 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/ec2"
+	"github.com/aws/aws-sdk-go/service/route53"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -81,29 +82,47 @@ func TestAWSProviderGetAddresses(t *testing.T) {
 
 func TestAWSProviderUpdateRecords(t *testing.T) {
 	tests := map[string]struct {
-		r53 *mockRoute53
-
-		ec2         *mockEC2Service
-		domains     []string
+		r53         *mockRoute53
+		domain      string
+		instanceIPs []string
+		expectedIPs []*route53.ResourceRecord
 		expectedErr error
 	}{
-		"returns no error when no domains are supplied": {
-			&mockRoute53{err: errors.New("shouldn't see this")},
+		"returns error when error occurs during list call": {
+			&mockRoute53{err: errors.New("no recordsets found")},
+			"foo.com",
 			nil,
 			nil,
+			errors.New("unable to locate resource records for domain foo.com: no recordsets found"),
+		},
+		"returns record with supplied values if record does not exist": {
+			&mockRoute53{},
+			"foo.com",
+			[]string{"10.1.1.1"},
+			[]*route53.ResourceRecord{
+				{Value: aws.String("10.1.1.1")},
+			},
 			nil,
 		},
-		"returns error when unable to retrieve addresses": {
-			&mockRoute53{err: errors.New("shouldn't see this")},
-			&mockEC2Service{responseErr: errors.New("no addresses found")},
-			[]string{"foo.com"},
-			errors.New("discovery: describing instances failed: no addresses found"),
+		"returns record with non-duplicate values": {
+			&mockRoute53{ipsToReturn: []string{"10.1.1.1", "10.1.1.2"}},
+			"foo.com",
+			[]string{"10.1.1.1"},
+			[]*route53.ResourceRecord{
+				{Value: aws.String("10.1.1.1")},
+				{Value: aws.String("10.1.1.2")},
+			},
+			nil,
 		},
-		"returns error when error occurred making DNS changes": {
-			&mockRoute53{err: errors.New("hosted zone not found")},
-			&mockEC2Service{instances: []*ec2.Instance{{PrivateIpAddress: aws.String("10.1.1.1")}}},
-			[]string{"foo.com"},
-			errors.New("hosted zone not found"),
+		"returns record with newly added values values": {
+			&mockRoute53{ipsToReturn: []string{"10.1.1.1"}},
+			"foo.com",
+			[]string{"10.1.1.2"},
+			[]*route53.ResourceRecord{
+				{Value: aws.String("10.1.1.2")},
+				{Value: aws.String("10.1.1.1")},
+			},
+			nil,
 		},
 	}
 
@@ -112,10 +131,11 @@ func TestAWSProviderUpdateRecords(t *testing.T) {
 			cfg:       &configuration.AWS{},
 			dnsCfg:    &configuration.DNS{},
 			r53Client: test.r53,
-			ec2Client: test.ec2,
 			lookup:    &cloud.LookupConfig{},
 		}
-		err := p.UpsertRecordSet(test.domains)
+		addrs, err := p.getAddressesForDomain(test.domain, test.instanceIPs)
 		assert.Equal(t, test.expectedErr, err, name)
+		assert.ElementsMatch(t, test.expectedIPs, addrs, name)
+
 	}
 }

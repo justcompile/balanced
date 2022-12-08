@@ -2,10 +2,10 @@ package loadbalancer
 
 import (
 	"balanced/pkg/cloud"
-	_ "balanced/pkg/cloud/awscloud"
-	_ "balanced/pkg/cloud/mock"
+	"balanced/pkg/cloud/awscloud"
 	"balanced/pkg/configuration"
 	"balanced/pkg/types"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -28,7 +28,11 @@ func NewUpdater(cfg *configuration.Config) (*Updater, error) {
 		return nil, err
 	}
 
-	p, err := cloud.GetProvider("aws", cfg)
+	if cfg.Cloud.AWS == nil {
+		return nil, errors.New("awscloud configuration has not been set")
+	}
+
+	p, err := awscloud.New(cfg)
 	if err != nil {
 		return nil, err
 	}
