@@ -127,7 +127,7 @@ func (a *AWSProvider) UpsertRecordSet(domains []string) error {
 	}
 
 	changes := make([]*route53.Change, 0)
-	for i, domain := range domains {
+	for _, domain := range domains {
 		records, err := a.getAddressesForDomain(domain, addresses)
 		if err != nil {
 			return err
@@ -138,7 +138,7 @@ func (a *AWSProvider) UpsertRecordSet(domains []string) error {
 			continue
 		}
 
-		changes[i] = &route53.Change{
+		changes = append(changes, &route53.Change{
 			Action: aws.String(route53.ChangeActionUpsert),
 			ResourceRecordSet: &route53.ResourceRecordSet{
 				Name:            aws.String(domain),
@@ -146,7 +146,11 @@ func (a *AWSProvider) UpsertRecordSet(domains []string) error {
 				Type:            aws.String(a.cfg.Type),
 				TTL:             aws.Int64(a.cfg.TTL),
 			},
-		}
+		})
+	}
+
+	if len(changes) == 0 {
+		return nil
 	}
 
 	input := &route53.ChangeResourceRecordSetsInput{
