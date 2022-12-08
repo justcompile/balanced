@@ -39,7 +39,7 @@ func TestServiceCache_getDomainFromServiceAnnotation(t *testing.T) {
 			},
 			&namespaceNameKey{name: "foo", namespace: "bar"},
 			nil,
-			&ignoreService{service: "foo:bar", reason: "annotation my.uri/domains cannot be found"},
+			&IgnoreService{service: "foo:bar", reason: "annotation my.uri/domains cannot be found"},
 		},
 		"returns domain if annotation found on service and lb id matches": {
 			[]*v1.Service{
@@ -72,7 +72,7 @@ func TestServiceCache_getDomainFromServiceAnnotation(t *testing.T) {
 			},
 			&namespaceNameKey{name: "foo", namespace: "bar"},
 			nil,
-			&ignoreService{service: "foo:bar", reason: "annotation my.uri/load-balancer-id empty or does not match this load balancer id: testing"},
+			&IgnoreService{service: "foo:bar", reason: "annotation my.uri/load-balancer-id empty or does not match this load balancer id: testing"},
 		},
 	}
 

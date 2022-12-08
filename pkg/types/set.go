@@ -2,8 +2,10 @@ package types
 
 type Set[T comparable] map[T]struct{}
 
-func (s Set[T]) Add(v T) {
-	s[v] = struct{}{}
+func (s Set[T]) Add(value ...T) {
+	for _, v := range value {
+		s[v] = struct{}{}
+	}
 }
 
 // Diff returns a new set with elements in the set that are in `s` but not `b`.

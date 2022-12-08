@@ -1,12 +1,14 @@
 package k8s
 
-import "fmt"
+import (
+	"fmt"
+)
 
-type ignoreService struct {
+type IgnoreService struct {
 	service string
 	reason  string
 }
 
-func (i *ignoreService) Error() string {
+func (i *IgnoreService) Error() string {
 	return fmt.Sprintf("service %s ignored due to: %s", i.service, i.reason)
 }

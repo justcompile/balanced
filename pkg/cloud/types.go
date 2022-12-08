@@ -1,6 +1,9 @@
 package cloud
 
-import "balanced/pkg/types"
+import (
+	"balanced/pkg/configuration"
+	"balanced/pkg/types"
+)
 
 const (
 	SecurityGroupTag = "balanced:managed"
@@ -21,4 +24,16 @@ type LookupConfig struct {
 	TagKey      string
 	TagValue    string
 	UsePublicIP bool
+}
+
+type initProvider func(*configuration.Config) (CloudProvider, error)
+
+var registry = map[string]initProvider{}
+
+func RegisterProvider(name string, f initProvider) {
+	registry[name] = f
+}
+
+func GetProvider(name string, cfg *configuration.Config) (CloudProvider, error) {
+	return registry[name](cfg)
 }
