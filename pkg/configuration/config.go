@@ -29,27 +29,14 @@ type Cloud struct {
 }
 
 type AWS struct {
-	HostedZoneId string   `toml:"route-53-hosted-zone-id"`
-	Type         string   `toml:"route-53-record-type"`
-	TTL          int64    `toml:"route-53-ttl"`
-	Tags         []string `toml:"tags"`
-}
-
-func (a *AWS) TagsAsMap() map[string]string {
-	val := make(map[string]string)
-
-	for _, tag := range a.Tags {
-		parts := strings.Split(tag, "=")
-		val[parts[0]] = parts[1]
-	}
-
-	return val
+	HostedZoneId string `toml:"route-53-hosted-zone-id"`
+	Type         string `toml:"route-53-record-type"`
+	TTL          int64  `toml:"route-53-ttl"`
 }
 
 type DNS struct {
-	Enabled          bool   `toml:"enabled"`
-	TagKey           string `toml:"discovery-tag"`
-	UsePublicAddress bool   `toml:"use-public-address"`
+	Enabled          bool `toml:"enabled"`
+	UsePublicAddress bool `toml:"use-public-address"`
 }
 
 type LoadBalancer struct {
