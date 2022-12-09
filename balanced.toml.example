@@ -18,11 +18,9 @@ backend {{.Domain}}
 
 [dns]
 enabled = true|false
-discovery-tag = "" # tag key used to lookup other cluster members
 use-public-address = true|false
 
 [cloud.aws]
 route53-hosted-zone-id = ""
 route53-record-type = "A"
 route53-ttl = 60
-tags = ["key:value"]

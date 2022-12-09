@@ -176,7 +176,7 @@ func (a *AWSProvider) recordSetForUpdate(domain string, addressesToAdd []string)
 }
 
 func New(cfg *configuration.Config) (*AWSProvider, error) {
-	meta, err := getInstanceMetaData(cfg.DNS.TagKey)
+	meta, err := getInstanceMetaData()
 	if err != nil {
 		return nil, err
 	}
