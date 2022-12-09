@@ -3,6 +3,7 @@ package configuration
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/BurntSushi/toml"
 
@@ -10,6 +11,10 @@ import (
 	"path/filepath"
 
 	"k8s.io/client-go/util/homedir"
+)
+
+var (
+	defaultSyncInterval = time.Second * 20
 )
 
 type Config struct {
@@ -48,9 +53,10 @@ type DNS struct {
 }
 
 type LoadBalancer struct {
-	ConfigDir string `toml:"config-dir"`
-	ReloadCmd string `toml:"reload-cmd"`
-	Template  string `toml:"template"`
+	ReconcileDuration *time.Duration `toml:"sync-interval"`
+	ConfigDir         string         `toml:"config-dir"`
+	ReloadCmd         string         `toml:"reload-cmd"`
+	Template          string         `toml:"template"`
 }
 
 type KubeConfig struct {
@@ -89,6 +95,10 @@ func New(path string) (*Config, error) {
 	_, err := toml.DecodeFile(path, &cfg)
 	if err != nil {
 		return nil, fmt.Errorf("configuration: %s", err)
+	}
+
+	if cfg.LoadBalancer != nil && cfg.LoadBalancer.ReconcileDuration == nil {
+		cfg.LoadBalancer.ReconcileDuration = &defaultSyncInterval
 	}
 	return &cfg, nil
 }

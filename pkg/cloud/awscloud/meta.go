@@ -12,6 +12,7 @@ type instanceMetaData struct {
 	region          string
 	tagValue        string
 	securityGroupId string
+	instanceID      string
 }
 
 func getInstanceMetaData(tagKey string) (*instanceMetaData, error) {
@@ -36,7 +37,13 @@ func getInstanceMetaData(tagKey string) (*instanceMetaData, error) {
 		return nil, fmt.Errorf("awscloud: retrieving instance security groups failed: %s", grpErr)
 	}
 
+	instanceId, idErr := ec2meta.GetMetadata("instance-id")
+	if idErr != nil {
+		return nil, fmt.Errorf("awscloud: unable to retrieve instance id: %s", idErr)
+	}
+
 	return &instanceMetaData{
+		instanceID:      instanceId,
 		region:          az[:len(az)-1],
 		securityGroupId: strings.Fields(groupIds)[0],
 		tagValue:        tagValue,

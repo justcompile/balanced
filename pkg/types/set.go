@@ -38,7 +38,19 @@ func (s Set[T]) Remove(v T) {
 	delete(s, v)
 }
 
-func (s Set[T]) Has(animal T) bool {
-	_, ok := s[animal]
+func (s Set[T]) Has(v T) bool {
+	_, ok := s[v]
 	return ok
+}
+
+func (s Set[T]) Values() []T {
+	values := make([]T, len(s))
+	i := 0
+
+	for k := range s {
+		values[i] = k
+		i++
+	}
+
+	return values
 }

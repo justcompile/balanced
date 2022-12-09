@@ -1,7 +1,6 @@
 package awscloud
 
 import (
-	"balanced/pkg/cloud"
 	"balanced/pkg/configuration"
 	"errors"
 	"testing"
@@ -15,13 +14,13 @@ import (
 func TestAWSProviderGetAddresses(t *testing.T) {
 	tests := map[string]struct {
 		client            *mockEC2Service
-		cfg               *cloud.LookupConfig
+		usePublicIP       bool
 		expectedAddresses []string
 		expectedErr       error
 	}{
 		"returns error if ec2.DescribeInstances does": {
 			&mockEC2Service{responseErr: errors.New("api error")},
-			&cloud.LookupConfig{},
+			false,
 			nil,
 			errors.New("discovery: describing instances failed: api error"),
 		},
@@ -31,7 +30,7 @@ func TestAWSProviderGetAddresses(t *testing.T) {
 					{PrivateIpAddress: aws.String("10.0.0.1")},
 				},
 			},
-			&cloud.LookupConfig{UsePublicIP: true},
+			true,
 			nil,
 			nil,
 		},
@@ -41,7 +40,7 @@ func TestAWSProviderGetAddresses(t *testing.T) {
 					{},
 				},
 			},
-			&cloud.LookupConfig{},
+			true,
 			nil,
 			nil,
 		},
@@ -51,7 +50,7 @@ func TestAWSProviderGetAddresses(t *testing.T) {
 					{PublicIpAddress: aws.String("10.0.0.1")},
 				},
 			},
-			&cloud.LookupConfig{UsePublicIP: true},
+			true,
 			[]string{"10.0.0.1"},
 			nil,
 		},
@@ -62,7 +61,7 @@ func TestAWSProviderGetAddresses(t *testing.T) {
 					{PublicIpAddress: aws.String("4.0.0.1"), PrivateIpAddress: aws.String("100.1.1.1")},
 				},
 			},
-			&cloud.LookupConfig{UsePublicIP: false},
+			false,
 			[]string{"10.1.1.1", "100.1.1.1"},
 			nil,
 		},
@@ -71,9 +70,11 @@ func TestAWSProviderGetAddresses(t *testing.T) {
 	for name, test := range tests {
 		p := &AWSProvider{
 			ec2Client: test.client,
+			dnsCfg:    &configuration.DNS{UsePublicAddress: test.usePublicIP},
+			metaData:  &instanceMetaData{instanceID: "i-12345"},
 		}
 
-		addrs, err := p.GetAddresses(test.cfg)
+		addrs, err := p.GetAddresses()
 
 		assert.Equal(t, test.expectedErr, err, name)
 		assert.Equal(t, test.expectedAddresses, addrs, name)
@@ -82,45 +83,59 @@ func TestAWSProviderGetAddresses(t *testing.T) {
 
 func TestAWSProviderUpdateRecords(t *testing.T) {
 	tests := map[string]struct {
-		r53         *mockRoute53
-		domain      string
-		instanceIPs []string
-		expectedIPs []*route53.ResourceRecord
-		expectedErr error
+		r53            *mockRoute53
+		domain         string
+		instanceIPs    []string
+		expectedRecord *route53.ResourceRecordSet
+		expectedErr    error
 	}{
-		"returns error when error occurs during list call": {
+		"returns nil when no addresses are supplied": {
 			&mockRoute53{err: errors.New("no recordsets found")},
 			"foo.com",
 			nil,
 			nil,
+			nil,
+		},
+		"returns error when error occurs during list call": {
+			&mockRoute53{err: errors.New("no recordsets found")},
+			"foo.com",
+			[]string{"10.1.1.1"},
+			nil,
 			errors.New("unable to locate resource records for domain foo.com: no recordsets found"),
 		},
-		"returns record with supplied values if record does not exist": {
+		"returns new record with supplied values if record does not exist": {
 			&mockRoute53{},
 			"foo.com",
 			[]string{"10.1.1.1"},
-			[]*route53.ResourceRecord{
-				{Value: aws.String("10.1.1.1")},
+			&route53.ResourceRecordSet{
+				Name: aws.String("foo.com"),
+				Type: aws.String(""),
+				TTL:  aws.Int64(defaultRecordSetTTL),
+				ResourceRecords: []*route53.ResourceRecord{
+					{Value: aws.String("10.1.1.1")},
+				},
 			},
 			nil,
 		},
-		"returns record with non-duplicate values": {
-			&mockRoute53{ipsToReturn: []string{"10.1.1.1", "10.1.1.2"}},
+		"returns nil record with when no changes are required": {
+			&mockRoute53{hostname: "foo.com", ipsToReturn: []string{"10.1.1.1", "10.1.1.2"}},
 			"foo.com",
 			[]string{"10.1.1.1"},
-			[]*route53.ResourceRecord{
-				{Value: aws.String("10.1.1.1")},
-				{Value: aws.String("10.1.1.2")},
-			},
+			nil,
 			nil,
 		},
 		"returns record with newly added values values": {
-			&mockRoute53{ipsToReturn: []string{"10.1.1.1"}},
+			&mockRoute53{hostname: "foo.com", ipsToReturn: []string{"10.1.1.1"}},
 			"foo.com",
 			[]string{"10.1.1.2"},
-			[]*route53.ResourceRecord{
-				{Value: aws.String("10.1.1.2")},
-				{Value: aws.String("10.1.1.1")},
+			&route53.ResourceRecordSet{
+				Name: aws.String("foo.com"),
+				Type: aws.String("A"),
+				TTL:  aws.Int64(defaultRecordSetTTL),
+				ResourceRecords: []*route53.ResourceRecord{
+					{Value: aws.String("10.1.1.1")},
+					{Value: aws.String("10.1.1.2")},
+				},
 			},
 			nil,
 		},
@@ -131,11 +146,9 @@ func TestAWSProviderUpdateRecords(t *testing.T) {
 			cfg:       &configuration.AWS{},
 			dnsCfg:    &configuration.DNS{},
 			r53Client: test.r53,
-			lookup:    &cloud.LookupConfig{},
 		}
-		addrs, err := p.getAddressesForDomain(test.domain, test.instanceIPs)
+		addrs, err := p.recordSetForUpdate(test.domain, test.instanceIPs)
 		assert.Equal(t, test.expectedErr, err, name)
-		assert.ElementsMatch(t, test.expectedIPs, addrs, name)
-
+		assert.Equal(t, test.expectedRecord, addrs, name)
 	}
 }

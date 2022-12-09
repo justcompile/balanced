@@ -1,12 +1,9 @@
 package awscloud
 
 import (
-	"balanced/pkg/cloud"
 	"balanced/pkg/configuration"
 	"balanced/pkg/types"
-	"errors"
 	"fmt"
-	"strings"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
@@ -16,7 +13,6 @@ import (
 	"github.com/aws/aws-sdk-go/service/ec2/ec2iface"
 	"github.com/aws/aws-sdk-go/service/route53"
 	"github.com/aws/aws-sdk-go/service/route53/route53iface"
-	"github.com/google/uuid"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -38,24 +34,14 @@ func getAWSSession(region string) (*session.Session, error) {
 type AWSProvider struct {
 	cfg       *configuration.AWS
 	dnsCfg    *configuration.DNS
-	lookup    *cloud.LookupConfig
 	metaData  *instanceMetaData
 	ec2Client ec2iface.EC2API
 	r53Client route53iface.Route53API
 }
 
-func (a *AWSProvider) GetAddresses(cfg *cloud.LookupConfig) ([]string, error) {
+func (a *AWSProvider) GetAddresses() ([]string, error) {
 	resp, err := a.ec2Client.DescribeInstances(&ec2.DescribeInstancesInput{
-		Filters: []*ec2.Filter{
-			{
-				Name:   aws.String("tag:" + cfg.TagKey),
-				Values: []*string{aws.String(cfg.TagValue)},
-			},
-			{
-				Name:   aws.String("instance-state-name"),
-				Values: []*string{aws.String("running")},
-			},
-		},
+		InstanceIds: aws.StringSlice([]string{a.metaData.instanceID}),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("discovery: describing instances failed: %s", err)
@@ -64,7 +50,7 @@ func (a *AWSProvider) GetAddresses(cfg *cloud.LookupConfig) ([]string, error) {
 	var addrs []string
 	for _, r := range resp.Reservations {
 		for _, inst := range r.Instances {
-			if cfg.UsePublicIP {
+			if a.dnsCfg.UsePublicAddress {
 				if inst.PublicIpAddress == nil {
 					continue
 				}
@@ -84,68 +70,31 @@ func (a *AWSProvider) GetAddresses(cfg *cloud.LookupConfig) ([]string, error) {
 	return addrs, nil
 }
 
-func (a *AWSProvider) ReconcileSecurityGroups(defs map[string]*types.LoadBalancerUpstreamDefinition, fullSync bool) error {
-	ports := types.Set[int64]{}
-	nodes := types.Set[string]{}
-
-	for _, def := range defs {
-		ports.Add(int64(def.Servers[0].Port))
-		nodes.Add(def.Servers[0].Meta.NodeName)
-	}
-
-	if len(nodes) == 0 {
-		return errors.New("node list is empty, not reconciling security groups")
-	}
-
-	log.Debugf("getting instances from Node names: %v", nodes)
-
-	instances, insErr := a.getInstancesFromDNSNames(nodes)
-	if insErr != nil {
-		return insErr
-	}
-
-	securityGroupId := a.metaData.securityGroupId
-
-	secGroup, sGrpErr := a.upsertSecurityGroupRules(ports, &securityGroupId, instances[0].VpcId, fullSync)
-	if sGrpErr != nil {
-		return sGrpErr
-	}
-
-	log.Debugf("upserted security group rules")
-
-	return a.associateSecurityGroupToInstances(secGroup, instances)
-}
-
 func (a *AWSProvider) UpsertRecordSet(domains []string) error {
 	if len(domains) == 0 {
 		return nil
 	}
 
-	addresses, err := a.GetAddresses(a.lookup)
+	addresses, err := a.GetAddresses()
 	if err != nil {
 		return err
 	}
 
 	changes := make([]*route53.Change, 0)
 	for _, domain := range domains {
-		records, err := a.getAddressesForDomain(domain, addresses)
+		recordSet, err := a.recordSetForUpdate(domain, addresses)
 		if err != nil {
 			return err
 		}
 
-		if len(records) == 0 {
+		if recordSet == nil {
 			log.Infof("no new addresses detected for DNS record %s, skipping", domain)
 			continue
 		}
 
 		changes = append(changes, &route53.Change{
-			Action: aws.String(route53.ChangeActionUpsert),
-			ResourceRecordSet: &route53.ResourceRecordSet{
-				Name:            aws.String(domain),
-				ResourceRecords: records,
-				Type:            aws.String(a.cfg.Type),
-				TTL:             aws.Int64(a.cfg.TTL),
-			},
+			Action:            aws.String(route53.ChangeActionUpsert),
+			ResourceRecordSet: recordSet,
 		})
 	}
 
@@ -160,15 +109,23 @@ func (a *AWSProvider) UpsertRecordSet(domains []string) error {
 		},
 	}
 
+	log.Debugf("making DNS changes: %v", input)
+
 	_, changeErr := a.r53Client.ChangeResourceRecordSets(input)
 	return changeErr
 }
 
-func (a *AWSProvider) getAddressesForDomain(domain string, addressesToAdd []string) ([]*route53.ResourceRecord, error) {
+func (a *AWSProvider) recordSetForUpdate(domain string, addressesToAdd []string) (*route53.ResourceRecordSet, error) {
+	if len(addressesToAdd) == 0 {
+		log.Debugf("no addresses supplied to update %s, skipping", domain)
+		return nil, nil
+	}
+
 	input := &route53.ListResourceRecordSetsInput{
 		HostedZoneId:    aws.String(a.cfg.HostedZoneId),
 		StartRecordName: aws.String(domain),
 		StartRecordType: aws.String(a.cfg.Type),
+		MaxItems:        aws.String("1"),
 	}
 
 	resp, err := a.r53Client.ListResourceRecordSets(input)
@@ -176,190 +133,46 @@ func (a *AWSProvider) getAddressesForDomain(domain string, addressesToAdd []stri
 		return nil, fmt.Errorf("unable to locate resource records for domain %s: %s", domain, err)
 	}
 
-	existing := make([]*route53.ResourceRecord, 0)
+	var recordSet *route53.ResourceRecordSet
 
-	if len(resp.ResourceRecordSets) >= 1 {
-		existing = resp.ResourceRecordSets[0].ResourceRecords
+	if len(resp.ResourceRecordSets) == 0 {
+		recordSet = &route53.ResourceRecordSet{
+			Name:            aws.String(domain),
+			Type:            aws.String(a.cfg.Type),
+			ResourceRecords: make([]*route53.ResourceRecord, 0),
+			TTL:             aws.Int64(defaultRecordSetTTL),
+		}
+	} else {
+		recordSet = resp.ResourceRecordSets[0]
 	}
 
+	existing := make(types.Set[string])
 	values := make(types.Set[string])
 
-	for _, v := range existing {
+	for _, v := range recordSet.ResourceRecords {
 		values.Add(*v.Value)
+		existing.Add(*v.Value)
 	}
 	values.Add(addressesToAdd...)
 
-	records := make([]*route53.ResourceRecord, len(values))
+	if len(existing.Diff(values)) == 0 && len(values.Diff(existing)) == 0 {
+		log.Debugf("no DNS changes discovered for %s", domain)
+		return nil, nil
+	}
+
+	log.Debugf("DNS %s differs. current: %v, desired: %v", domain, existing, values)
+
+	recordSet.ResourceRecords = make([]*route53.ResourceRecord, len(values))
+
 	i := 0
 	for addr := range values {
-		records[i] = &route53.ResourceRecord{
+		recordSet.ResourceRecords[i] = &route53.ResourceRecord{
 			Value: aws.String(addr),
 		}
 		i++
 	}
 
-	return records, nil
-}
-
-func (a *AWSProvider) upsertSecurityGroupRules(ports types.Set[int64], lbSecurityGroupId, vpcId *string, fullSync bool) (*cloud.SecurityGroup, error) {
-	filters := []*ec2.Filter{
-		{Name: aws.String("tag-key"), Values: aws.StringSlice([]string{cloud.SecurityGroupTag})},
-		{Name: aws.String("vpc-id"), Values: []*string{vpcId}},
-	}
-
-	for k, v := range a.cfg.TagsAsMap() {
-		filters = append(filters, (&ec2.Filter{}).SetName("tag:"+k).SetValues(aws.StringSlice([]string{v})))
-	}
-
-	resp, err := a.ec2Client.DescribeSecurityGroups(
-		&ec2.DescribeSecurityGroupsInput{
-			Filters: filters,
-		},
-	)
-
-	if err != nil {
-		return nil, fmt.Errorf("awscloud: error discovering security groups: %s", err)
-	}
-
-	if len(resp.SecurityGroups) == 0 {
-		log.Debugf("security group with tag %s not found", cloud.SecurityGroupTag)
-		return a.createSecurityGroup(ports, lbSecurityGroupId, vpcId)
-	}
-
-	if len(resp.SecurityGroups) > 1 {
-		return nil, fmt.Errorf("awscloud: multiple security groups with the tag %s exist", cloud.SecurityGroupTag)
-	}
-
-	if fullSync {
-		err = a.updateRules(resp.SecurityGroups[0], ports, lbSecurityGroupId, vpcId)
-	}
-
-	return &cloud.SecurityGroup{Id: aws.StringValue(resp.SecurityGroups[0].GroupId)}, err
-}
-
-func (a *AWSProvider) updateRules(grp *ec2.SecurityGroup, requiredPorts types.Set[int64], lbSecurityGroupId, vpcId *string) error {
-
-	existingPorts := types.Set[int64]{}
-	for _, perm := range grp.IpPermissions {
-		existingPorts.Add(*perm.FromPort)
-	}
-
-	portsToAdd := requiredPorts.Diff(existingPorts)
-	portsToRemove := existingPorts.Diff(requiredPorts)
-	if len(portsToRemove) > 0 {
-		log.Infof("awscloud: removing ports %v from security group %s", portsToRemove, *grp.GroupId)
-		if _, err := a.ec2Client.RevokeSecurityGroupIngress(&ec2.RevokeSecurityGroupIngressInput{
-			IpPermissions: ipPermissionsFromPorts(portsToRemove, lbSecurityGroupId, vpcId),
-			GroupId:       grp.GroupId,
-		}); err != nil {
-			return fmt.Errorf("awscloud: an error occured removing ingress rules: %s", err)
-		}
-	}
-
-	if len(portsToAdd) > 0 {
-		log.Debugf("awscloud: adding ports %v from security group %s", portsToAdd, *grp.GroupId)
-
-		if _, err := a.ec2Client.AuthorizeSecurityGroupIngress(&ec2.AuthorizeSecurityGroupIngressInput{
-			IpPermissions: ipPermissionsFromPorts(portsToAdd, lbSecurityGroupId, vpcId),
-			GroupId:       grp.GroupId,
-		}); err != nil {
-			return fmt.Errorf("awscloud: an error occured updating ingress rules: %s", err)
-		}
-
-		log.Debugf("awscloud: updated security group rules: group-id %s ", *grp.GroupId)
-	}
-
-	return nil
-}
-
-func (a *AWSProvider) createSecurityGroup(ports types.Set[int64], lbSecurityGroupId, vpcId *string) (*cloud.SecurityGroup, error) {
-	suffix := strings.Split(uuid.New().String(), "-")[0]
-	groupName := aws.String("balanced-to-eks-ingress-" + suffix)
-
-	tags := []*ec2.Tag{
-		(&ec2.Tag{}).SetKey(cloud.SecurityGroupTag).SetValue("1"),
-		{Key: aws.String("Name"), Value: groupName},
-	}
-
-	for k, v := range a.cfg.TagsAsMap() {
-		tags = append(tags, (&ec2.Tag{}).SetKey(k).SetValue(v))
-	}
-
-	resp, err := a.ec2Client.CreateSecurityGroup(
-		&ec2.CreateSecurityGroupInput{
-			Description: aws.String("Ingress Rules from Balanced Load Balancer"),
-			GroupName:   groupName,
-			VpcId:       vpcId,
-			TagSpecifications: []*ec2.TagSpecification{
-				(&ec2.TagSpecification{}).
-					SetResourceType("security-group").
-					SetTags(tags),
-			},
-		},
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	permissions := ipPermissionsFromPorts(ports, lbSecurityGroupId, vpcId)
-
-	_, rulesErr := a.ec2Client.AuthorizeSecurityGroupIngress(&ec2.AuthorizeSecurityGroupIngressInput{
-		GroupId:       resp.GroupId,
-		IpPermissions: permissions,
-	})
-
-	if err != nil {
-		return nil, rulesErr
-	}
-
-	return &cloud.SecurityGroup{Id: aws.StringValue(resp.GroupId)}, nil
-}
-
-func (a *AWSProvider) associateSecurityGroupToInstances(secGroup *cloud.SecurityGroup, instances []*ec2.Instance) error {
-	for _, instance := range instances {
-		for _, ni := range instance.NetworkInterfaces {
-			if groupIds, exists := NetworkInterfaceHasGroup(ni, secGroup.Id); !exists {
-				log.Debugf("associating security group %s to Network Interface %s on instance %s", secGroup.Id, *ni.NetworkInterfaceId, *instance.InstanceId)
-				groupIds = append(groupIds, &secGroup.Id)
-				if _, err := a.ec2Client.ModifyNetworkInterfaceAttribute(&ec2.ModifyNetworkInterfaceAttributeInput{
-					NetworkInterfaceId: ni.NetworkInterfaceId,
-					Groups:             groupIds,
-				}); err != nil {
-					log.Error(err)
-				}
-			}
-		}
-	}
-
-	return nil
-}
-
-func (a *AWSProvider) getInstancesFromDNSNames(names types.Set[string]) ([]*ec2.Instance, error) {
-	values := make([]string, len(names))
-	var i int
-	for k := range names {
-		values[i] = k
-		i++
-	}
-
-	input := &ec2.DescribeInstancesInput{
-		Filters: []*ec2.Filter{
-			{Name: aws.String("private-dns-name"), Values: aws.StringSlice(values)},
-			{Name: aws.String("instance-state-name"), Values: []*string{aws.String("running")}},
-		},
-	}
-
-	resp, err := a.ec2Client.DescribeInstances(input)
-	if err != nil {
-		return nil, err
-	}
-
-	instances := make([]*ec2.Instance, 0)
-	for _, res := range resp.Reservations {
-		instances = append(instances, res.Instances...)
-	}
-
-	return instances, nil
+	return recordSet, nil
 }
 
 func New(cfg *configuration.Config) (*AWSProvider, error) {
@@ -374,14 +187,9 @@ func New(cfg *configuration.Config) (*AWSProvider, error) {
 	}
 
 	p := &AWSProvider{
-		cfg:      cfg.Cloud.AWS,
-		dnsCfg:   &cfg.DNS,
-		metaData: meta,
-		lookup: &cloud.LookupConfig{
-			TagKey:      cfg.DNS.TagKey,
-			TagValue:    meta.tagValue,
-			UsePublicIP: cfg.DNS.UsePublicAddress,
-		},
+		cfg:       cfg.Cloud.AWS,
+		dnsCfg:    &cfg.DNS,
+		metaData:  meta,
 		ec2Client: ec2.New(sess),
 		r53Client: route53.New(sess),
 	}
