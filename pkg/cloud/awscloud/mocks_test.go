@@ -32,6 +32,7 @@ func (m *mockEC2Service) DescribeInstances(*ec2.DescribeInstancesInput) (*ec2.De
 
 type mockRoute53 struct {
 	err         error
+	hostname    string
 	ipsToReturn []string
 	route53iface.Route53API
 }
@@ -45,6 +46,12 @@ func (m *mockRoute53) ListResourceRecordSets(*route53.ListResourceRecordSetsInpu
 		return nil, m.err
 	}
 
+	if len(m.ipsToReturn) == 0 {
+		return &route53.ListResourceRecordSetsOutput{
+			ResourceRecordSets: []*route53.ResourceRecordSet{},
+		}, nil
+	}
+
 	records := make([]*route53.ResourceRecord, len(m.ipsToReturn))
 
 	for i, addr := range m.ipsToReturn {
@@ -55,7 +62,12 @@ func (m *mockRoute53) ListResourceRecordSets(*route53.ListResourceRecordSetsInpu
 
 	return &route53.ListResourceRecordSetsOutput{
 		ResourceRecordSets: []*route53.ResourceRecordSet{
-			{ResourceRecords: records},
+			{
+				Name:            aws.String(m.hostname),
+				ResourceRecords: records,
+				Type:            aws.String("A"),
+				TTL:             aws.Int64(defaultRecordSetTTL),
+			},
 		},
 	}, nil
 }

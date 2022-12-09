@@ -57,7 +57,7 @@ func (u *Updater) Start(changes chan *types.Change) {
 	ticker := time.NewTicker(*u.cfg.LoadBalancer.ReconcileDuration)
 	defer ticker.Stop()
 
-	domains := make([]string, 0)
+	domains := make(types.Set[string])
 
 	for {
 		select {
@@ -86,16 +86,8 @@ func (u *Updater) Start(changes chan *types.Change) {
 				continue
 			}
 
-			domains = append(domains, change.Obj.Domain)
-			if err := u.p.ReconcileSecurityGroups(map[string]*types.LoadBalancerUpstreamDefinition{"update": change.Obj}, false); err != nil {
-				log.Error(err)
-			}
-
+			domains.Add(change.Obj.Domain)
 		case <-ticker.C:
-			if err := u.p.ReconcileSecurityGroups(u.cache, true); err != nil {
-				log.Error(err)
-			}
-
 			if u.reloadRequired {
 				u.reloadRequired = false
 
@@ -107,13 +99,12 @@ func (u *Updater) Start(changes chan *types.Change) {
 			}
 
 			if u.cfg.DNS.Enabled {
-				if err := u.p.UpsertRecordSet(domains); err != nil {
+				if err := u.p.UpsertRecordSet(domains.Values()); err != nil {
 					log.Error(err)
 					// don't empty the domain buffer on error
 					continue
 				}
 			}
-			domains = make([]string, 0)
 		}
 	}
 }

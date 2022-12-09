@@ -97,7 +97,7 @@ func New(path string) (*Config, error) {
 		return nil, fmt.Errorf("configuration: %s", err)
 	}
 
-	if cfg.LoadBalancer.ReconcileDuration == nil {
+	if cfg.LoadBalancer != nil && cfg.LoadBalancer.ReconcileDuration == nil {
 		cfg.LoadBalancer.ReconcileDuration = &defaultSyncInterval
 	}
 	return &cfg, nil
