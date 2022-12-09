@@ -89,8 +89,10 @@ func (a *AWSProvider) ReconcileSecurityGroups(defs map[string]*types.LoadBalance
 	nodes := types.Set[string]{}
 
 	for _, def := range defs {
-		ports.Add(int64(def.Servers[0].Port))
-		nodes.Add(def.Servers[0].Meta.NodeName)
+		for _, svr := range def.Servers {
+			ports.Add(int64(svr.Port))
+			nodes.Add(svr.Meta.NodeName)
+		}
 	}
 
 	if len(nodes) == 0 {
@@ -320,10 +322,10 @@ func (a *AWSProvider) associateSecurityGroupToInstances(secGroup *cloud.Security
 		for _, ni := range instance.NetworkInterfaces {
 			if groupIds, exists := NetworkInterfaceHasGroup(ni, secGroup.Id); !exists {
 				log.Debugf("associating security group %s to Network Interface %s on instance %s", secGroup.Id, *ni.NetworkInterfaceId, *instance.InstanceId)
-				groupIds = append(groupIds, &secGroup.Id)
+				groupIds = append(groupIds, secGroup.Id)
 				if _, err := a.ec2Client.ModifyNetworkInterfaceAttribute(&ec2.ModifyNetworkInterfaceAttributeInput{
 					NetworkInterfaceId: ni.NetworkInterfaceId,
-					Groups:             groupIds,
+					Groups:             aws.StringSlice(groupIds),
 				}); err != nil {
 					log.Error(err)
 				}

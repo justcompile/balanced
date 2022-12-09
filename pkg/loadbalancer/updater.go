@@ -54,7 +54,7 @@ type Updater struct {
 }
 
 func (u *Updater) Start(changes chan *types.Change) {
-	ticker := time.NewTicker(time.Second * 10)
+	ticker := time.NewTicker(*u.cfg.LoadBalancer.ReconcileDuration)
 	defer ticker.Stop()
 
 	domains := make([]string, 0)

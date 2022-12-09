@@ -5,18 +5,20 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/ec2"
+	log "github.com/sirupsen/logrus"
 )
 
-func NetworkInterfaceHasGroup(ini *ec2.InstanceNetworkInterface, groupId string) ([]*string, bool) {
+func NetworkInterfaceHasGroup(ini *ec2.InstanceNetworkInterface, groupId string) ([]string, bool) {
 	hasGroup := false
 
-	groupIds := make([]*string, len(ini.Groups))
+	groupIds := make([]string, len(ini.Groups))
 	for i, grp := range ini.Groups {
-		groupIds[i] = grp.GroupId
+		groupIds[i] = *grp.GroupId
 		if *grp.GroupId == groupId {
 			hasGroup = true
 		}
 	}
+	log.Debugf("network interface %s has groups: %v, (checking for group %s)", *ini.NetworkInterfaceId, groupIds, groupId)
 
 	return groupIds, hasGroup
 }
