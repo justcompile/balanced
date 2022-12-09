@@ -109,6 +109,8 @@ func (a *AWSProvider) UpsertRecordSet(domains []string) error {
 		},
 	}
 
+	log.Debugf("making DNS changes: %v", input)
+
 	_, changeErr := a.r53Client.ChangeResourceRecordSets(input)
 	return changeErr
 }
