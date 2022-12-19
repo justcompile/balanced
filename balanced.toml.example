@@ -10,6 +10,7 @@ config-dir = "" # dir to store load balancer configuration
 reload-cmd = "systemctl reload haproxy" # command to reload loadbalancer configuration
 template = """
 backend {{.Domain}}
+  http-check send meth GET uri {{.HealthCheck}} hdr Host {{.Domain}}
   balance roundrobin
   {{range .Servers -}}
   server {{.Id}} {{.IPAddress}}:{{.Port}} check check-ssl

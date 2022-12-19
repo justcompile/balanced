@@ -9,6 +9,8 @@ import (
 	"sync"
 
 	log "github.com/sirupsen/logrus"
+
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 )
@@ -16,15 +18,26 @@ import (
 type serviceCache struct {
 	cfg           *configuration.KubeConfig
 	clientset     kubernetes.Interface
-	domainMapping map[string][]string
+	domainMapping map[string]*serviceData
 	mx            *sync.RWMutex
 }
 
-func (s *serviceCache) lookupDomainForService(ctx context.Context, ns *namespaceNameKey) []string {
+type serviceData struct {
+	domains             []string
+	healthCheckEndpoint string
+}
+
+func (s *serviceCache) lookupService(ctx context.Context, ns *namespaceNameKey) *serviceData {
 	s.mx.RLock()
 	defer s.mx.RUnlock()
 	if _, exists := s.domainMapping[ns.String()]; !exists {
-		domains, err := s.getDomainFromServiceAnnotation(ctx, ns)
+		svc, err := s.getService(ctx, ns)
+		if err != nil {
+			log.Error(err.Error())
+			return nil
+		}
+
+		domains, err := s.getDomainFromServiceAnnotation(svc, ns)
 		if err != nil {
 			var ign *IgnoreService
 			if errors.As(err, &ign) {
@@ -37,18 +50,27 @@ func (s *serviceCache) lookupDomainForService(ctx context.Context, ns *namespace
 		}
 
 		if len(domains) > 0 {
-			s.domainMapping[ns.String()] = domains
+			d := &serviceData{
+				domains:             domains,
+				healthCheckEndpoint: s.tryGetHealthCheckEndpointFromServiceAnnotation(svc, ns),
+			}
+			s.domainMapping[ns.String()] = d
 		}
 	}
 
 	return s.domainMapping[ns.String()]
 }
 
-func (s *serviceCache) getDomainFromServiceAnnotation(ctx context.Context, ns *namespaceNameKey) ([]string, error) {
+func (s *serviceCache) getService(ctx context.Context, ns *namespaceNameKey) (*corev1.Service, error) {
 	svc, err := s.clientset.CoreV1().Services(ns.namespace).Get(ctx, ns.name, metav1.GetOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("error retrieving service %s => %s", ns, err.Error())
 	}
+
+	return svc, nil
+}
+
+func (s *serviceCache) getDomainFromServiceAnnotation(svc *corev1.Service, ns *namespaceNameKey) ([]string, error) {
 
 	var domain string
 	var exists bool
@@ -65,6 +87,20 @@ func (s *serviceCache) getDomainFromServiceAnnotation(ctx context.Context, ns *n
 	return strings.Split(domain, ","), nil
 }
 
+func (s *serviceCache) tryGetHealthCheckEndpointFromServiceAnnotation(svc *corev1.Service, ns *namespaceNameKey) string {
+	var endpoint string
+	var exists bool
+
+	endpoint, exists = svc.GetAnnotations()[s.cfg.HealthCheckAnnotationKey()]
+
+	if !exists {
+		log.Debugf("service %s does not have health check annotation set, using default", ns)
+		return "/health"
+	}
+
+	return endpoint
+}
+
 func (s *serviceCache) removeServiceRecord(ctx context.Context, ns *namespaceNameKey) {
 	s.mx.Lock()
 	defer s.mx.Unlock()
@@ -76,7 +112,7 @@ func newServiceCache(cfg *configuration.KubeConfig, clientset kubernetes.Interfa
 	return &serviceCache{
 		cfg:           cfg,
 		clientset:     clientset,
-		domainMapping: make(map[string][]string),
+		domainMapping: make(map[string]*serviceData),
 		mx:            &sync.RWMutex{},
 	}
 }

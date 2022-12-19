@@ -13,14 +13,6 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/clientcmd"
-	//
-	// Uncomment to load all auth plugins
-	// _ "k8s.io/client-go/plugin/pkg/client/auth"
-	//
-	// Or uncomment to load specific auth plugins
-	// _ "k8s.io/client-go/plugin/pkg/client/auth/azure"
-	// _ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
-	// _ "k8s.io/client-go/plugin/pkg/client/auth/oidc"
 )
 
 func NewWatcher(cfg *configuration.KubeConfig, opts ...WatchOptions) (*Watcher, error) {
@@ -153,12 +145,13 @@ func (w *Watcher) getEndpointFromService(s *corev1.Service) (*corev1.Endpoints, 
 func (w *Watcher) handleChange(c chan *types.Change, e *corev1.Endpoints) {
 	key := namespacedResourceToKey(e)
 
-	domains := w.serviceCache.lookupDomainForService(context.Background(), key)
-	if len(domains) == 0 {
+	svc := w.serviceCache.lookupService(context.Background(), key)
+
+	if svc == nil || len(svc.domains) == 0 {
 		return
 	}
-	for _, domain := range domains {
-		def := types.NewLoadBalancerDefinitionChange(domain, e)
+	for _, domain := range svc.domains {
+		def := types.NewLoadBalancerDefinitionChange(domain, svc.healthCheckEndpoint, e)
 
 		if len(def.Obj.Servers) == 0 {
 			log.Warnf("endpoint %s changed but endpoint has 0 ready addresses", key)

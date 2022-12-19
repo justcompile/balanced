@@ -11,6 +11,7 @@ import (
 
 func TestLoadBalancerUpstreamDefinitionFromK8sEndpoint(t *testing.T) {
 	domain := "foo.com"
+	healthCheck := "/health"
 	tests := map[string]struct {
 		endpoint *corev1.Endpoints
 		expected *Change
@@ -32,7 +33,8 @@ func TestLoadBalancerUpstreamDefinitionFromK8sEndpoint(t *testing.T) {
 			},
 			&Change{
 				Obj: &LoadBalancerUpstreamDefinition{
-					Domain: domain,
+					Domain:      domain,
+					HealthCheck: healthCheck,
 					Servers: []*Server{
 						{Id: "my-pod-1", IPAddress: "10.1.1.1", Port: 8443, Meta: &ServerMeta{NodeName: "node-1"}},
 					},
@@ -42,7 +44,7 @@ func TestLoadBalancerUpstreamDefinitionFromK8sEndpoint(t *testing.T) {
 	}
 
 	for name, test := range tests {
-		change := NewLoadBalancerDefinitionChange(domain, test.endpoint)
+		change := NewLoadBalancerDefinitionChange(domain, healthCheck, test.endpoint)
 		assert.Equal(t, test.expected, change, name)
 	}
 }

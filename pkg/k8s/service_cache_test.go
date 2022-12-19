@@ -10,11 +10,12 @@ import (
 	"github.com/stretchr/testify/assert"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
 )
 
 func TestServiceCache_getDomainFromServiceAnnotation(t *testing.T) {
 	tests := map[string]struct {
-		services        []*v1.Service
+		service         *v1.Service
 		namespaceKey    *namespaceNameKey
 		expectedDomains []string
 		expectedErr     error
@@ -26,14 +27,12 @@ func TestServiceCache_getDomainFromServiceAnnotation(t *testing.T) {
 			errors.New("error retrieving service foo:bar => does not exist"),
 		},
 		"returns error if domain annotation not found on service": {
-			[]*v1.Service{
-				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "foo",
-						Namespace: "bar",
-						Annotations: map[string]string{
-							"my.uri/load-balancer-id": "testing",
-						},
+			&v1.Service{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "foo",
+					Namespace: "bar",
+					Annotations: map[string]string{
+						"my.uri/load-balancer-id": "testing",
 					},
 				},
 			},
@@ -42,15 +41,13 @@ func TestServiceCache_getDomainFromServiceAnnotation(t *testing.T) {
 			&IgnoreService{service: "foo:bar", reason: "annotation my.uri/domains cannot be found"},
 		},
 		"returns domain if annotation found on service and lb id matches": {
-			[]*v1.Service{
-				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "foo",
-						Namespace: "bar",
-						Annotations: map[string]string{
-							"my.uri/domains":          "foobar.com",
-							"my.uri/load-balancer-id": "testing",
-						},
+			&v1.Service{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "foo",
+					Namespace: "bar",
+					Annotations: map[string]string{
+						"my.uri/domains":          "foobar.com",
+						"my.uri/load-balancer-id": "testing",
 					},
 				},
 			},
@@ -59,14 +56,12 @@ func TestServiceCache_getDomainFromServiceAnnotation(t *testing.T) {
 			nil,
 		},
 		"returns ignore error if annotation found on service but id does not match": {
-			[]*v1.Service{
-				{
-					ObjectMeta: metav1.ObjectMeta{
-						Name:      "foo",
-						Namespace: "bar",
-						Annotations: map[string]string{
-							"my.uri/domains": "foobar.com",
-						},
+			&v1.Service{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "foo",
+					Namespace: "bar",
+					Annotations: map[string]string{
+						"my.uri/domains": "foobar.com",
 					},
 				},
 			},
@@ -82,34 +77,89 @@ func TestServiceCache_getDomainFromServiceAnnotation(t *testing.T) {
 				ServiceAnnotationKeyPrefix:      "my.uri",
 				ServiceAnnotationLoadBalancerId: "testing",
 			},
-			clientset: &mockClientset{services: test.services},
+			clientset: &mockClientset{services: []*v1.Service{test.service}},
 		}
 
-		domains, err := s.getDomainFromServiceAnnotation(context.TODO(), test.namespaceKey)
+		domains, err := s.getDomainFromServiceAnnotation(test.service, test.namespaceKey)
 
 		assert.Equal(t, test.expectedErr, err, name)
 		assert.Equal(t, test.expectedDomains, domains, name)
 	}
 }
 
-func TestServiceCache_lookupDomainForService(t *testing.T) {
+func TestServiceCache_getService(t *testing.T) {
+	tests := map[string]struct {
+		clientset       kubernetes.Interface
+		namespaceKey    *namespaceNameKey
+		expectedService *v1.Service
+		expectedErr     error
+	}{
+		"returns error if service cannot be found": {
+			&mockClientset{},
+			&namespaceNameKey{name: "foo", namespace: "bar"},
+			nil,
+			errors.New("error retrieving service foo:bar => does not exist"),
+		},
+		"returns service if found": {
+			&mockClientset{services: []*v1.Service{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "foo",
+						Namespace: "bar",
+						Annotations: map[string]string{
+							"my.uri/load-balancer-id": "testing",
+						},
+					},
+				}},
+			},
+			&namespaceNameKey{name: "foo", namespace: "bar"},
+			&v1.Service{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "foo",
+					Namespace: "bar",
+					Annotations: map[string]string{
+						"my.uri/load-balancer-id": "testing",
+					},
+				},
+			},
+			nil,
+		},
+	}
+
+	for name, test := range tests {
+		s := &serviceCache{
+			cfg: &configuration.KubeConfig{
+				ServiceAnnotationKeyPrefix:      "my.uri",
+				ServiceAnnotationLoadBalancerId: "testing",
+			},
+			clientset: test.clientset,
+		}
+
+		svc, err := s.getService(context.Background(), test.namespaceKey)
+
+		assert.Equal(t, test.expectedErr, err, name)
+		assert.Equal(t, test.expectedService, svc, name)
+	}
+}
+
+func TestServiceCache_lookupService(t *testing.T) {
 	tests := map[string]struct {
 		services        []*v1.Service
-		cache           map[string][]string
+		cache           map[string]*serviceData
 		namespaceKey    *namespaceNameKey
 		expectedDomains []string
 		expectedErr     error
 	}{
 		"returns error if service is not in cache and cannot be found": {
 			nil,
-			make(map[string][]string),
+			make(map[string]*serviceData),
 			&namespaceNameKey{name: "foo", namespace: "bar"},
 			nil,
 			errors.New("error retrieving service foo:bar => does not exist"),
 		},
 		"returns domain from cache if already set": {
 			nil, // will result in an error if value is not in cache
-			map[string][]string{"foo:bar": {"foobar.example.com"}},
+			map[string]*serviceData{"foo:bar": &serviceData{domains: []string{"foobar.example.com"}}},
 			&namespaceNameKey{name: "foo", namespace: "bar"},
 			[]string{"foobar.example.com"},
 			nil,
@@ -126,7 +176,7 @@ func TestServiceCache_lookupDomainForService(t *testing.T) {
 					},
 				},
 			},
-			make(map[string][]string),
+			make(map[string]*serviceData),
 			&namespaceNameKey{name: "foo", namespace: "bar"},
 			nil,
 			nil,
@@ -144,7 +194,7 @@ func TestServiceCache_lookupDomainForService(t *testing.T) {
 					},
 				},
 			},
-			make(map[string][]string),
+			make(map[string]*serviceData),
 			&namespaceNameKey{name: "foo", namespace: "bar"},
 			[]string{"foobar.com"},
 			nil,
@@ -162,7 +212,7 @@ func TestServiceCache_lookupDomainForService(t *testing.T) {
 
 		s.domainMapping = test.cache
 
-		domains := s.lookupDomainForService(context.TODO(), test.namespaceKey)
+		domains := s.lookupService(context.TODO(), test.namespaceKey)
 
 		assert.Equal(t, test.expectedDomains, domains, name)
 	}
@@ -170,24 +220,24 @@ func TestServiceCache_lookupDomainForService(t *testing.T) {
 
 func TestServiceCache_removeServiceRecord(t *testing.T) {
 	tests := map[string]struct {
-		initialCache map[string][]string
+		initialCache map[string]*serviceData
 		namespaceKey *namespaceNameKey
-		expected     map[string][]string
+		expected     map[string]*serviceData
 	}{
 		"does not panic if record does not exist": {
-			make(map[string][]string),
+			make(map[string]*serviceData),
 			&namespaceNameKey{name: "foo", namespace: "bar"},
-			make(map[string][]string),
+			make(map[string]*serviceData),
 		},
 		"does remove record if record exists": {
-			map[string][]string{"foo:bar": {"fizzbuzz"}},
+			map[string]*serviceData{"foo:bar": {}},
 			&namespaceNameKey{name: "foo", namespace: "bar"},
-			make(map[string][]string),
+			make(map[string]*serviceData),
 		},
 		"cache is unaffected if record does not exist": {
-			map[string][]string{"foo:bar": {"fizzbuzz"}},
+			map[string]*serviceData{"foo:bar": {}},
 			&namespaceNameKey{name: "fizz", namespace: "bar"},
-			map[string][]string{"foo:bar": {"fizzbuzz"}},
+			map[string]*serviceData{"foo:bar": {}},
 		},
 	}
 
