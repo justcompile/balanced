@@ -16,8 +16,9 @@ type Change struct {
 }
 
 type LoadBalancerUpstreamDefinition struct {
-	Domain  string
-	Servers []*Server
+	Domain      string
+	HealthCheck string
+	Servers     []*Server
 }
 
 type Server struct {
@@ -32,14 +33,15 @@ type ServerMeta struct {
 	NodeName string
 }
 
-func NewLoadBalancerDefinitionChange(domain string, endpoint *corev1.Endpoints) *Change {
+func NewLoadBalancerDefinitionChange(domain, healthCheck string, endpoint *corev1.Endpoints) *Change {
 	if endpoint == nil {
 		return nil
 	}
 
 	def := &LoadBalancerUpstreamDefinition{
-		Domain:  domain,
-		Servers: make([]*Server, 0),
+		Domain:      domain,
+		HealthCheck: healthCheck,
+		Servers:     make([]*Server, 0),
 	}
 
 	for _, ss := range endpoint.Subsets {
