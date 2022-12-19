@@ -61,7 +61,7 @@ func (k *KubeConfig) DomainAnnotationKey() string {
 
 func (k *KubeConfig) HealthCheckAnnotationKey() string {
 	prefix := strings.TrimSuffix(k.ServiceAnnotationKeyPrefix, "/")
-	return fmt.Sprintf("%s/health-check-endpoint", prefix)
+	return fmt.Sprintf("%s/health-check", prefix)
 }
 
 func (k *KubeConfig) LoadBalancerIdAnnotationKey() string {
