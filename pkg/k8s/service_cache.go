@@ -95,7 +95,7 @@ func (s *serviceCache) tryGetHealthCheckEndpointFromServiceAnnotation(svc *corev
 
 	if !exists {
 		log.Debugf("service %s does not have health check annotation set, using default", ns)
-		return ""
+		return "/health"
 	}
 
 	return endpoint
