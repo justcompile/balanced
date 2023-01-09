@@ -121,6 +121,8 @@ func (a *AWSProvider) recordSetForUpdate(domain string, addressesToAdd []string)
 		return nil, nil
 	}
 
+	log.Debugf("looking up route53 record for %s", domain)
+
 	input := &route53.ListResourceRecordSetsInput{
 		HostedZoneId:    aws.String(a.cfg.HostedZoneId),
 		StartRecordName: aws.String(domain),
@@ -132,6 +134,8 @@ func (a *AWSProvider) recordSetForUpdate(domain string, addressesToAdd []string)
 	if err != nil {
 		return nil, fmt.Errorf("unable to locate resource records for domain %s: %s", domain, err)
 	}
+
+	log.Debugf("found record set for %s: %v", domain, resp.ResourceRecordSets)
 
 	var recordSet *route53.ResourceRecordSet
 
