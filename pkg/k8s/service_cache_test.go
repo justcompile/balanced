@@ -159,7 +159,7 @@ func TestServiceCache_lookupService(t *testing.T) {
 		},
 		"returns domain from cache if already set": {
 			nil, // will result in an error if value is not in cache
-			map[string]*serviceData{"foo:bar": &serviceData{domains: []string{"foobar.example.com"}}},
+			map[string]*serviceData{"foo:bar": {domains: []string{"foobar.example.com"}}},
 			&namespaceNameKey{name: "foo", namespace: "bar"},
 			[]string{"foobar.example.com"},
 			nil,

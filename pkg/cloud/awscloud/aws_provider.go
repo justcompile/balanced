@@ -139,7 +139,7 @@ func (a *AWSProvider) recordSetForUpdate(domain string, addressesToAdd []string)
 
 	var recordSet *route53.ResourceRecordSet
 
-	if len(resp.ResourceRecordSets) == 0 || aws.StringValue(resp.ResourceRecordSets[0].Name) == domain+"." {
+	if len(resp.ResourceRecordSets) == 0 || aws.StringValue(resp.ResourceRecordSets[0].Name) != domain+"." {
 		recordSet = &route53.ResourceRecordSet{
 			Name:            aws.String(domain),
 			Type:            aws.String(a.cfg.Type),
