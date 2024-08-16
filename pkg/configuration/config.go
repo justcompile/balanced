@@ -34,9 +34,17 @@ type AWS struct {
 	TTL          int64  `toml:"route-53-ttl"`
 }
 
+type CustomDNS struct {
+	AddCommand    string `toml:"add-command"`
+	RemoveCommand string `toml:"remove-command"`
+}
+
 type DNS struct {
-	Enabled          bool `toml:"enabled"`
-	UsePublicAddress bool `toml:"use-public-address"`
+	Enabled          bool   `toml:"enabled"`
+	Address          string `toml:"advertised-address"`
+	UsePublicAddress bool   `toml:"use-public-address"`
+
+	Custom *CustomDNS `toml:"custom"`
 }
 
 type LoadBalancer struct {

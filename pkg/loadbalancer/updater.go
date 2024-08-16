@@ -1,11 +1,9 @@
 package loadbalancer
 
 import (
-	"balanced/pkg/cloud"
-	"balanced/pkg/cloud/awscloud"
 	"balanced/pkg/configuration"
+	"balanced/pkg/dns"
 	"balanced/pkg/types"
-	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -28,36 +26,38 @@ func NewUpdater(cfg *configuration.Config) (*Updater, error) {
 		return nil, err
 	}
 
-	if cfg.Cloud.AWS == nil {
-		return nil, errors.New("awscloud configuration has not been set")
-	}
-
-	p, err := awscloud.New(cfg)
+	reg, err := dns.NewCommandRegistrar(&cfg.DNS)
 	if err != nil {
 		return nil, err
 	}
 
 	return &Updater{
-		cfg:   cfg,
-		p:     p,
-		r:     r,
-		cache: make(map[string]*types.LoadBalancerUpstreamDefinition),
+		cfg:    cfg,
+		dns:    reg,
+		render: r,
+		cache:  make(map[string]*types.LoadBalancerUpstreamDefinition),
 	}, nil
 }
 
 type Updater struct {
 	cfg            *configuration.Config
-	r              *Renderer
-	p              cloud.CloudProvider
+	render         *Renderer
+	dns            dns.Registrar
 	cache          map[string]*types.LoadBalancerUpstreamDefinition
 	reloadRequired bool
+}
+
+func (u *Updater) OnExit() error {
+	if u.dns != nil {
+		return u.dns.RemoveAll()
+	}
+
+	return nil
 }
 
 func (u *Updater) Start(changes chan *types.Change) {
 	ticker := time.NewTicker(*u.cfg.LoadBalancer.ReconcileDuration)
 	defer ticker.Stop()
-
-	domains := make(types.Set[string])
 
 	for {
 		select {
@@ -86,7 +86,9 @@ func (u *Updater) Start(changes chan *types.Change) {
 				continue
 			}
 
-			domains.Add(change.Obj.Domain)
+			if err := u.dns.Add(change.Obj.Domain); err != nil {
+				log.Errorf("unable to update DNS record for %s: %s", change.Obj.Domain, err)
+			}
 		case <-ticker.C:
 			if u.reloadRequired {
 				u.reloadRequired = false
@@ -96,14 +98,6 @@ func (u *Updater) Start(changes chan *types.Change) {
 				}
 
 				log.Debugf("process reloaded successfully")
-			}
-
-			if u.cfg.DNS.Enabled {
-				if err := u.p.UpsertRecordSet(domains.Values()); err != nil {
-					log.Error(err)
-					// don't empty the domain buffer on error
-					continue
-				}
 			}
 		}
 	}
@@ -159,7 +153,7 @@ func (u *Updater) tryWriteToFile(fullFilePath string, change *types.LoadBalancer
 		return fmt.Errorf("unable to open %s: %s", fullFilePath, fErr)
 	}
 
-	if wErr := u.r.ToWriter(f, change); wErr != nil {
+	if wErr := u.render.ToWriter(f, change); wErr != nil {
 		return fmt.Errorf("unable to write to file %s: %s", fullFilePath, wErr)
 	}
 
