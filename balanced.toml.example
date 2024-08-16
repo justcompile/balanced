@@ -21,7 +21,6 @@ backend {{.Domain}}
 enabled = true|false
 use-public-address = true|false
 
-[cloud.aws]
-route53-hosted-zone-id = ""
-route53-record-type = "A"
-route53-ttl = 60
+[dns.custom]
+add_command = "/usr/local/bin/update-dns-ips-td.sh add ${hosted_zone_id} {{.domain}} {{.address}} 443"
+remove_command = "/usr/local/bin/update-dns-ips-td.sh add ${hosted_zone_id} {{.domain}} {{.address}} 443"
