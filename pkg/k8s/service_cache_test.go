@@ -15,17 +15,11 @@ import (
 
 func TestServiceCache_getDomainFromServiceAnnotation(t *testing.T) {
 	tests := map[string]struct {
-		service         *v1.Service
-		namespaceKey    *namespaceNameKey
-		expectedDomains []string
-		expectedErr     error
+		service        *v1.Service
+		namespaceKey   *namespaceNameKey
+		expectedResult []string
+		expectedErr    error
 	}{
-		"returns error if service cannot be found": {
-			nil,
-			&namespaceNameKey{name: "foo", namespace: "bar"},
-			nil,
-			errors.New("error retrieving service foo:bar => does not exist"),
-		},
 		"returns error if domain annotation not found on service": {
 			&v1.Service{
 				ObjectMeta: metav1.ObjectMeta{
@@ -83,7 +77,7 @@ func TestServiceCache_getDomainFromServiceAnnotation(t *testing.T) {
 		domains, err := s.getDomainFromServiceAnnotation(test.service, test.namespaceKey)
 
 		assert.Equal(t, test.expectedErr, err, name)
-		assert.Equal(t, test.expectedDomains, domains, name)
+		assert.Equal(t, test.expectedResult, domains, name)
 	}
 }
 
@@ -144,11 +138,11 @@ func TestServiceCache_getService(t *testing.T) {
 
 func TestServiceCache_lookupService(t *testing.T) {
 	tests := map[string]struct {
-		services        []*v1.Service
-		cache           map[string]*serviceData
-		namespaceKey    *namespaceNameKey
-		expectedDomains []string
-		expectedErr     error
+		services       []*v1.Service
+		cache          map[string]*serviceData
+		namespaceKey   *namespaceNameKey
+		expectedResult *serviceData
+		expectedErr    error
 	}{
 		"returns error if service is not in cache and cannot be found": {
 			nil,
@@ -161,7 +155,7 @@ func TestServiceCache_lookupService(t *testing.T) {
 			nil, // will result in an error if value is not in cache
 			map[string]*serviceData{"foo:bar": {domains: []string{"foobar.example.com"}}},
 			&namespaceNameKey{name: "foo", namespace: "bar"},
-			[]string{"foobar.example.com"},
+			&serviceData{domains: []string{"foobar.example.com"}},
 			nil,
 		},
 		"does not retrieve domain from service annotation if available but id does not match": {
@@ -196,7 +190,7 @@ func TestServiceCache_lookupService(t *testing.T) {
 			},
 			make(map[string]*serviceData),
 			&namespaceNameKey{name: "foo", namespace: "bar"},
-			[]string{"foobar.com"},
+			&serviceData{domains: []string{"foobar.com"}, healthCheckEndpoint: "/health"},
 			nil,
 		},
 	}
@@ -214,7 +208,7 @@ func TestServiceCache_lookupService(t *testing.T) {
 
 		domains := s.lookupService(context.TODO(), test.namespaceKey)
 
-		assert.Equal(t, test.expectedDomains, domains, name)
+		assert.Equal(t, test.expectedResult, domains, name)
 	}
 }
 
