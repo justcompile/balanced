@@ -53,7 +53,7 @@ var root = &cobra.Command{
 			stop <- struct{}{}
 			log.Println("stopping")
 			if err := lb.OnExit(); err != nil {
-				log.Errorf(err.Error())
+				log.Errorln(err.Error())
 			}
 			time.Sleep(time.Second)
 		}
