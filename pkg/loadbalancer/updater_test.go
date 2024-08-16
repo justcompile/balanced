@@ -100,8 +100,8 @@ func TestUpdater_handleChange(t *testing.T) {
 		test.setup(test.cfg, test.change)
 
 		u := &Updater{
-			cfg: &configuration.Config{LoadBalancer: test.cfg},
-			r:   &Renderer{t: template.Must(template.New("foo").Parse(templateText))},
+			cfg:    &configuration.Config{LoadBalancer: test.cfg},
+			render: &Renderer{t: template.Must(template.New("foo").Parse(templateText))},
 		}
 
 		err := u.handleChange(test.change)

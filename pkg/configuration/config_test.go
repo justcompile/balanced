@@ -92,6 +92,20 @@ func TestConfig_New(t *testing.T) {
 			nil,
 			&Config{Kubernetes: &KubeConfig{ConfigPath: "/foobar/kube/config"}},
 		},
+		"returns config object when custom dns commands are provided": {
+			func() (string, error) {
+				data := "[dns]\nenabled = true\n\n[dns.custom]\nadd-command = \"dns.sh add something\""
+				f, err := createTempFile(data)
+				if err != nil {
+					return "", err
+				}
+
+				defer f.Close()
+				return f.Name(), nil
+			},
+			nil,
+			&Config{DNS: DNS{Enabled: true, Custom: &CustomDNS{AddCommand: "dns.sh add something"}}},
+		},
 	}
 
 	for name, test := range tests {
