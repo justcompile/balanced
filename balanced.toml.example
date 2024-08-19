@@ -19,8 +19,8 @@ backend {{.Domain}}
 
 [dns]
 enabled = true|false
-use-public-address = true|false
+advertised-address = "x.x.x.x"
 
 [dns.custom]
-add_command = "/usr/local/bin/update-dns-ips-td.sh add ${hosted_zone_id} {{.domain}} {{.address}} 443"
-remove_command = "/usr/local/bin/update-dns-ips-td.sh add ${hosted_zone_id} {{.domain}} {{.address}} 443"
+add-command = "bash -lc '/usr/local/bin/update-dns-ips-td.sh add ${hosted_zone_id} {{.domain}} {{.address}} 443'"
+remove-command = "bash -lc '/usr/local/bin/update-dns-ips-td.sh add ${hosted_zone_id} {{.domain}} {{.address}} 443'"

@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 	"text/template"
@@ -83,14 +84,11 @@ func run(command string) error {
 	}
 
 	proc := exec.Command(parts[0], parts[1:]...)
-	out, err := proc.Output()
-	if err != nil {
-		return err
-	}
-
+	proc.Env = os.Environ()
+	out, err := proc.CombinedOutput()
 	log.Debugln(string(out))
 
-	return nil
+	return err
 }
 
 func NewCommandRegistrar(cfg *configuration.DNS) (*CommandRegistrar, error) {
