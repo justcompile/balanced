@@ -59,7 +59,7 @@ func NewWatcher(cfg *configuration.KubeConfig, opts ...WatchOptions) (*Watcher, 
 
 type Watcher struct {
 	cfg               *configuration.KubeConfig
-	clientset         *kubernetes.Clientset
+	clientset         kubernetes.Interface
 	resyncInterval    *time.Duration
 	informer          kubeinformers.SharedInformerFactory
 	watchNamespaces   types.Set[string]

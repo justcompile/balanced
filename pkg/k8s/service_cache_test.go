@@ -10,7 +10,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/kubernetes/fake"
 )
 
 func TestServiceCache_getDomainFromServiceAnnotation(t *testing.T) {
@@ -71,7 +72,7 @@ func TestServiceCache_getDomainFromServiceAnnotation(t *testing.T) {
 				ServiceAnnotationKeyPrefix:      "my.uri",
 				ServiceAnnotationLoadBalancerId: "testing",
 			},
-			clientset: &mockClientset{services: []*v1.Service{test.service}},
+			clientset: fake.NewClientset(test.service),
 		}
 
 		domains, err := s.getDomainFromServiceAnnotation(test.service, test.namespaceKey)
@@ -83,20 +84,20 @@ func TestServiceCache_getDomainFromServiceAnnotation(t *testing.T) {
 
 func TestServiceCache_getService(t *testing.T) {
 	tests := map[string]struct {
-		clientset       kubernetes.Interface
+		objects         []runtime.Object
 		namespaceKey    *namespaceNameKey
 		expectedService *v1.Service
 		expectedErr     error
 	}{
 		"returns error if service cannot be found": {
-			&mockClientset{},
+			nil,
 			&namespaceNameKey{name: "foo", namespace: "bar"},
 			nil,
-			errors.New("error retrieving service foo:bar => does not exist"),
+			errors.New("error retrieving service foo:bar => services \"foo\" not found"),
 		},
 		"returns service if found": {
-			&mockClientset{services: []*v1.Service{
-				{
+			[]runtime.Object{
+				&v1.Service{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "foo",
 						Namespace: "bar",
@@ -104,7 +105,7 @@ func TestServiceCache_getService(t *testing.T) {
 							"my.uri/load-balancer-id": "testing",
 						},
 					},
-				}},
+				},
 			},
 			&namespaceNameKey{name: "foo", namespace: "bar"},
 			&v1.Service{
@@ -126,7 +127,7 @@ func TestServiceCache_getService(t *testing.T) {
 				ServiceAnnotationKeyPrefix:      "my.uri",
 				ServiceAnnotationLoadBalancerId: "testing",
 			},
-			clientset: test.clientset,
+			clientset: fake.NewClientset(test.objects...),
 		}
 
 		svc, err := s.getService(context.Background(), test.namespaceKey)
@@ -138,7 +139,7 @@ func TestServiceCache_getService(t *testing.T) {
 
 func TestServiceCache_lookupService(t *testing.T) {
 	tests := map[string]struct {
-		services       []*v1.Service
+		services       []runtime.Object
 		cache          map[string]*serviceData
 		namespaceKey   *namespaceNameKey
 		expectedResult *serviceData
@@ -159,8 +160,8 @@ func TestServiceCache_lookupService(t *testing.T) {
 			nil,
 		},
 		"does not retrieve domain from service annotation if available but id does not match": {
-			[]*v1.Service{
-				{
+			[]runtime.Object{
+				&v1.Service{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "foo",
 						Namespace: "bar",
@@ -176,8 +177,8 @@ func TestServiceCache_lookupService(t *testing.T) {
 			nil,
 		},
 		"retrieves domain from service annotation if available and id matches": {
-			[]*v1.Service{
-				{
+			[]runtime.Object{
+				&v1.Service{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "foo",
 						Namespace: "bar",
@@ -201,7 +202,7 @@ func TestServiceCache_lookupService(t *testing.T) {
 				ServiceAnnotationKeyPrefix:      "my.uri",
 				ServiceAnnotationLoadBalancerId: "testing",
 			},
-			&mockClientset{services: test.services},
+			fake.NewClientset(test.services...),
 		)
 
 		s.domainMapping = test.cache
