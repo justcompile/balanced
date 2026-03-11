@@ -4,16 +4,18 @@ import (
 	"net"
 	"testing"
 
-	"github.com/aws/aws-sdk-go/aws"
 	"github.com/stretchr/testify/assert"
 	corev1 "k8s.io/api/core/v1"
+	discoveryv1 "k8s.io/api/discovery/v1"
+	"k8s.io/utils/ptr"
 )
 
 func TestLoadBalancerUpstreamDefinitionFromK8sEndpoint(t *testing.T) {
 	domain := "foo.com"
 	healthCheck := "/health"
+
 	tests := map[string]struct {
-		endpoint *corev1.Endpoints
+		endpoint *discoveryv1.EndpointSlice
 		expected *Change
 	}{
 		"returns nil when endpoints is nil": {
@@ -21,15 +23,14 @@ func TestLoadBalancerUpstreamDefinitionFromK8sEndpoint(t *testing.T) {
 			nil,
 		},
 		"returns definition for endpoint": {
-			&corev1.Endpoints{
-				Subsets: []corev1.EndpointSubset{
+			&discoveryv1.EndpointSlice{
+				Endpoints: []discoveryv1.Endpoint{
 					{
-						Addresses: []corev1.EndpointAddress{
-							{IP: "10.1.1.1", TargetRef: &corev1.ObjectReference{Name: "my-pod-1"}, NodeName: aws.String("node-1")},
-						},
-						Ports: []corev1.EndpointPort{{Port: 8443}},
+						TargetRef: &corev1.ObjectReference{Name: "my-pod-1"}, NodeName: ptr.To("node-1"),
+						Addresses: []string{"10.1.1.1"},
 					},
 				},
+				Ports: []discoveryv1.EndpointPort{{Port: ptr.To(int32(8443))}},
 			},
 			&Change{
 				Obj: &LoadBalancerUpstreamDefinition{
@@ -51,7 +52,7 @@ func TestLoadBalancerUpstreamDefinitionFromK8sEndpoint(t *testing.T) {
 
 func TestSortedIPsFromEndpoint(t *testing.T) {
 	tests := map[string]struct {
-		endpoint *corev1.Endpoints
+		endpoint *discoveryv1.EndpointSlice
 		expected []net.IP
 	}{
 		"returns nil when endpoint is nil": {
@@ -59,48 +60,41 @@ func TestSortedIPsFromEndpoint(t *testing.T) {
 			nil,
 		},
 		"returns single ip when endpoint only maps to one address": {
-			&corev1.Endpoints{
-				Subsets: []corev1.EndpointSubset{
+			&discoveryv1.EndpointSlice{
+				Endpoints: []discoveryv1.Endpoint{
 					{
-						Addresses: []corev1.EndpointAddress{
-							{IP: "10.1.1.1", TargetRef: &corev1.ObjectReference{Name: "my-pod-1"}},
-						},
-						Ports: []corev1.EndpointPort{{Port: 8443}},
+						TargetRef: &corev1.ObjectReference{Name: "my-pod-1"},
+						Addresses: []string{"10.1.1.1"},
 					},
 				},
+
+				Ports: []discoveryv1.EndpointPort{{Port: ptr.To(int32(8443))}},
 			},
 			[]net.IP{
 				net.ParseIP("10.1.1.1"),
 			},
 		},
 		"returns ips ordered ascendingly": {
-			&corev1.Endpoints{
-				Subsets: []corev1.EndpointSubset{
+			&discoveryv1.EndpointSlice{
+				Endpoints: []discoveryv1.Endpoint{
 					{
-						Addresses: []corev1.EndpointAddress{
-							{IP: "10.1.1.1", TargetRef: &corev1.ObjectReference{Name: "my-pod-1"}},
-						},
-						Ports: []corev1.EndpointPort{{Port: 8443}},
+						TargetRef: &corev1.ObjectReference{Name: "my-pod-1"},
+						Addresses: []string{"10.1.1.1"},
 					},
 					{
-						Addresses: []corev1.EndpointAddress{
-							{IP: "10.1.2.1", TargetRef: &corev1.ObjectReference{Name: "my-pod-1"}},
-						},
-						Ports: []corev1.EndpointPort{{Port: 8443}},
+						TargetRef: &corev1.ObjectReference{Name: "my-pod-1"},
+						Addresses: []string{"10.1.2.1"},
 					},
 					{
-						Addresses: []corev1.EndpointAddress{
-							{IP: "10.10.1.10", TargetRef: &corev1.ObjectReference{Name: "my-pod-1"}},
-						},
-						Ports: []corev1.EndpointPort{{Port: 8443}},
+						TargetRef: &corev1.ObjectReference{Name: "my-pod-1"},
+						Addresses: []string{"10.10.1.10"},
 					},
 					{
-						Addresses: []corev1.EndpointAddress{
-							{IP: "10.10.1.1", TargetRef: &corev1.ObjectReference{Name: "my-pod-1"}},
-						},
-						Ports: []corev1.EndpointPort{{Port: 8443}},
+						TargetRef: &corev1.ObjectReference{Name: "my-pod-1"},
+						Addresses: []string{"10.10.1.1"},
 					},
 				},
+				Ports: []discoveryv1.EndpointPort{{Port: ptr.To(int32(8443))}},
 			},
 			[]net.IP{
 				net.ParseIP("10.1.1.1"),

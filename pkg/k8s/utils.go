@@ -4,14 +4,14 @@ import (
 	"balanced/pkg/types"
 	"fmt"
 
-	corev1 "k8s.io/api/core/v1"
+	discoveryv1 "k8s.io/api/discovery/v1"
 )
 
 func shouldWatchResource[T NamespacedResource](w *Watcher, obj T) bool {
 	return (w.watchNamespaces.Has(obj.GetNamespace()) || len(w.watchNamespaces) == 0) && !w.excludeNamespaces.Has(obj.GetNamespace())
 }
 
-func endpointHasChanged(oldEndpoint, newEndpoint *corev1.Endpoints) bool {
+func endpointHasChanged(oldEndpoint, newEndpoint *discoveryv1.EndpointSlice) bool {
 	if oldEndpoint.GetResourceVersion() != newEndpoint.GetResourceVersion() {
 		oldIps := types.SortedIPsFromEndpoint(oldEndpoint)
 		newIps := types.SortedIPsFromEndpoint(newEndpoint)

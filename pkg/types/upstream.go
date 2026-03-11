@@ -6,7 +6,8 @@ import (
 	"sort"
 	"time"
 
-	corev1 "k8s.io/api/core/v1"
+	discoveryv1 "k8s.io/api/discovery/v1"
+	"k8s.io/utils/ptr"
 )
 
 type Change struct {
@@ -33,7 +34,7 @@ type ServerMeta struct {
 	NodeName string
 }
 
-func NewLoadBalancerDefinitionChange(domain, healthCheck string, endpoint *corev1.Endpoints) *Change {
+func NewLoadBalancerDefinitionChange(domain, healthCheck string, endpoint *discoveryv1.EndpointSlice) *Change {
 	if endpoint == nil {
 		return nil
 	}
@@ -44,17 +45,17 @@ func NewLoadBalancerDefinitionChange(domain, healthCheck string, endpoint *corev
 		Servers:     make([]*Server, 0),
 	}
 
-	for _, ss := range endpoint.Subsets {
-		port := ss.Ports[0].Port
+	for _, ss := range endpoint.Endpoints {
+		port := endpoint.Ports[0].Port
 
 		for _, a := range ss.Addresses {
 			def.Servers = append(def.Servers, &Server{
-				Id:        a.TargetRef.Name,
-				IPAddress: a.IP,
-				Port:      port,
+				Id:        ss.TargetRef.Name,
+				IPAddress: a,
+				Port:      *port,
 				Meta: &ServerMeta{
-					Hostname: a.Hostname,
-					NodeName: *a.NodeName,
+					Hostname: ptr.Deref(ss.Hostname, ""),
+					NodeName: ptr.Deref(ss.NodeName, ""),
 				},
 			})
 		}
@@ -63,15 +64,15 @@ func NewLoadBalancerDefinitionChange(domain, healthCheck string, endpoint *corev
 	return &Change{Obj: def}
 }
 
-func SortedIPsFromEndpoint(e *corev1.Endpoints) []net.IP {
+func SortedIPsFromEndpoint(e *discoveryv1.EndpointSlice) []net.IP {
 	if e == nil {
 		return nil
 	}
 	addresses := make([]net.IP, 0)
 
-	for _, ss := range e.Subsets {
+	for _, ss := range e.Endpoints {
 		for _, a := range ss.Addresses {
-			addresses = append(addresses, net.ParseIP(a.IP))
+			addresses = append(addresses, net.ParseIP(a))
 		}
 	}
 

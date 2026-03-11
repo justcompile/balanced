@@ -41,7 +41,7 @@ func (s *serviceCache) lookupService(ctx context.Context, ns *namespaceNameKey) 
 		if err != nil {
 			var ign *IgnoreService
 			if errors.As(err, &ign) {
-				log.Warn(err)
+				log.Debug(err)
 			} else {
 				log.Errorf("%T", err)
 				log.Error(err.Error())

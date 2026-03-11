@@ -61,7 +61,7 @@ var root = &cobra.Command{
 }
 
 func Execute() {
-	root.Flags().StringP("config", "c", "./balanced.toml", "Path to config file")
+	root.PersistentFlags().StringP("config", "c", "./balanced.toml", "Path to config file")
 
 	if err := root.Execute(); err != nil {
 		log.Fatal(err)
