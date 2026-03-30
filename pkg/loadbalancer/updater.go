@@ -11,9 +11,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/aws/aws-sdk-go/aws"
 	"github.com/google/shlex"
 	log "github.com/sirupsen/logrus"
+	"k8s.io/utils/ptr"
 )
 
 const (
@@ -78,7 +78,7 @@ func (u *Updater) Start(changes chan *types.Change) {
 				change.Retried += 1
 				if change.Retried < retryAttempts {
 					log.Infof("retry %d/%d: reschedule change for %s", change.Retried, retryAttempts, change.Obj.Domain)
-					change.RetryAfter = aws.Time(time.Now().Add(time.Second * 5))
+					change.RetryAfter = ptr.To(time.Now().Add(time.Second * 5))
 					changes <- change
 				} else {
 					log.Infof("retry %d/%d: change for %s could not be applied", change.Retried, retryAttempts, change.Obj.Domain)

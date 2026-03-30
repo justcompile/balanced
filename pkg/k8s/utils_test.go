@@ -6,6 +6,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	corev1 "k8s.io/api/core/v1"
+	discoveryv1 "k8s.io/api/discovery/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -21,17 +22,17 @@ func sliceToSetMap(val []string) types.Set[string] {
 
 func Test_endpointHasChanged(t *testing.T) {
 	tests := map[string]struct {
-		oldEndpoint    *corev1.Endpoints
-		newEndpoint    *corev1.Endpoints
+		oldEndpoint    *discoveryv1.EndpointSlice
+		newEndpoint    *discoveryv1.EndpointSlice
 		expectedResult bool
 	}{
 		"has not changed if resource versions match": {
-			&corev1.Endpoints{
+			&discoveryv1.EndpointSlice{
 				ObjectMeta: metav1.ObjectMeta{
 					ResourceVersion: "a",
 				},
 			},
-			&corev1.Endpoints{
+			&discoveryv1.EndpointSlice{
 				ObjectMeta: metav1.ObjectMeta{
 					ResourceVersion: "a",
 				},
@@ -39,108 +40,82 @@ func Test_endpointHasChanged(t *testing.T) {
 			false,
 		},
 		"has not changed if ip addresses match but unordered": {
-			&corev1.Endpoints{
+			&discoveryv1.EndpointSlice{
 				ObjectMeta: metav1.ObjectMeta{
 					ResourceVersion: "a",
 				},
-				Subsets: []corev1.EndpointSubset{
-					{Addresses: []corev1.EndpointAddress{
-						{IP: "10.1.1.2"},
-					}},
-					{Addresses: []corev1.EndpointAddress{
-						{IP: "10.1.1.3"},
-					}},
-					{Addresses: []corev1.EndpointAddress{
-						{IP: "10.1.1.1"},
-					}},
+				Endpoints: []discoveryv1.Endpoint{
+					{Addresses: []string{"10.1.1.2"}},
+					{Addresses: []string{"10.1.1.3"}},
+					{Addresses: []string{"10.1.1.1"}},
 				},
 			},
-			&corev1.Endpoints{
+			&discoveryv1.EndpointSlice{
 				ObjectMeta: metav1.ObjectMeta{
 					ResourceVersion: "b",
 				},
-				Subsets: []corev1.EndpointSubset{
-					{Addresses: []corev1.EndpointAddress{
-						{IP: "10.1.1.3"},
-					}},
-					{Addresses: []corev1.EndpointAddress{
-						{IP: "10.1.1.2"},
-					}},
-					{Addresses: []corev1.EndpointAddress{
-						{IP: "10.1.1.1"},
-					}},
+				Endpoints: []discoveryv1.Endpoint{
+					{Addresses: []string{"10.1.1.3"}},
+					{Addresses: []string{"10.1.1.2"}},
+					{Addresses: []string{"10.1.1.1"}},
 				},
 			},
 			false,
 		},
 		"has not changed if ip addresses match": {
-			&corev1.Endpoints{
+			&discoveryv1.EndpointSlice{
 				ObjectMeta: metav1.ObjectMeta{
 					ResourceVersion: "a",
 				},
-				Subsets: []corev1.EndpointSubset{
-					{Addresses: []corev1.EndpointAddress{
-						{IP: "10.1.1.1"},
-					}},
+				Endpoints: []discoveryv1.Endpoint{
+					{Addresses: []string{"10.1.1.1"}},
 				},
 			},
-			&corev1.Endpoints{
+			&discoveryv1.EndpointSlice{
 				ObjectMeta: metav1.ObjectMeta{
 					ResourceVersion: "b",
 				},
-				Subsets: []corev1.EndpointSubset{
-					{Addresses: []corev1.EndpointAddress{
-						{IP: "10.1.1.1"},
-					}},
+				Endpoints: []discoveryv1.Endpoint{
+					{Addresses: []string{"10.1.1.1"}},
 				},
 			},
 			false,
 		},
 		"has changed if ip addresses do not match": {
-			&corev1.Endpoints{
+			&discoveryv1.EndpointSlice{
 				ObjectMeta: metav1.ObjectMeta{
 					ResourceVersion: "a",
 				},
-				Subsets: []corev1.EndpointSubset{
-					{Addresses: []corev1.EndpointAddress{
-						{IP: "10.1.1.1"},
-					}},
+				Endpoints: []discoveryv1.Endpoint{
+					{Addresses: []string{"10.1.1.1"}},
 				},
 			},
-			&corev1.Endpoints{
+			&discoveryv1.EndpointSlice{
 				ObjectMeta: metav1.ObjectMeta{
 					ResourceVersion: "b",
 				},
-				Subsets: []corev1.EndpointSubset{
-					{Addresses: []corev1.EndpointAddress{
-						{IP: "10.1.1.10"},
-					}},
+				Endpoints: []discoveryv1.Endpoint{
+					{Addresses: []string{"10.1.1.10"}},
 				},
 			},
 			true,
 		},
 		"has changed if number of ip addresses do not match": {
-			&corev1.Endpoints{
+			&discoveryv1.EndpointSlice{
 				ObjectMeta: metav1.ObjectMeta{
 					ResourceVersion: "a",
 				},
-				Subsets: []corev1.EndpointSubset{
-					{Addresses: []corev1.EndpointAddress{
-						{IP: "10.1.1.2"},
-					}},
-					{Addresses: []corev1.EndpointAddress{
-						{IP: "10.1.1.1"},
-					}},
+				Endpoints: []discoveryv1.Endpoint{
+					{Addresses: []string{"10.1.1.2"}},
+					{Addresses: []string{"10.1.1.1"}},
 				},
 			},
-			&corev1.Endpoints{
+			&discoveryv1.EndpointSlice{
 				ObjectMeta: metav1.ObjectMeta{
 					ResourceVersion: "b",
 				},
-				Subsets: []corev1.EndpointSubset{
-					{Addresses: []corev1.EndpointAddress{
-						{IP: "10.1.1.1"},
-					}},
+				Endpoints: []discoveryv1.Endpoint{
+					{Addresses: []string{"10.1.1.1"}},
 				},
 			},
 			true,

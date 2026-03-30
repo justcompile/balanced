@@ -1,14 +1,24 @@
 package k8s
 
-import "fmt"
+import (
+	"fmt"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+)
 
 type NamespacedResource interface {
 	GetName() string
 	GetNamespace() string
+	GetOwnerReferences() []metav1.OwnerReference
 }
 
 func namespacedResourceToKey(ns NamespacedResource) *namespaceNameKey {
-	return &namespaceNameKey{name: ns.GetName(), namespace: ns.GetNamespace()}
+	name := ns.GetName()
+	if len(ns.GetOwnerReferences()) > 0 {
+		name = ns.GetOwnerReferences()[0].Name
+	}
+
+	return &namespaceNameKey{name: name, namespace: ns.GetNamespace()}
 }
 
 type namespaceNameKey struct {
