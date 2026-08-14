@@ -96,7 +96,7 @@ func (w *Watcher) setup() chan *types.Change {
 					return
 				}
 
-				w.handleChange(c, endpoint)
+				w.handleChange(c, nil, endpoint)
 			}
 		},
 		DeleteFunc: func(obj interface{}) {
@@ -120,7 +120,7 @@ func (w *Watcher) setup() chan *types.Change {
 				return
 			}
 
-			w.handleChange(c, endpoint)
+			w.handleChange(c, nil, endpoint)
 		},
 		DeleteFunc: func(obj interface{}) {
 			key := namespacedResourceToKey(obj.(*discoveryv1.EndpointSlice))
@@ -136,7 +136,7 @@ func (w *Watcher) setup() chan *types.Change {
 			}
 
 			if endpointHasChanged(oldEndpoint, newEndpoint) {
-				w.handleChange(c, newEndpoint)
+				w.handleChange(c, oldEndpoint, newEndpoint)
 			}
 		},
 	})
@@ -169,8 +169,8 @@ func (w *Watcher) getEndpointFromService(s *corev1.Service) (*discoveryv1.Endpoi
 	return nil, fmt.Errorf("could not locate EndpointSlice for service %s:%s", s.GetName(), s.GetNamespace())
 }
 
-func (w *Watcher) handleChange(c chan *types.Change, e *discoveryv1.EndpointSlice) {
-	key := namespacedResourceToKey(e)
+func (w *Watcher) handleChange(c chan *types.Change, oldEndpoint, newEndpoint *discoveryv1.EndpointSlice) {
+	key := namespacedResourceToKey(newEndpoint)
 
 	svc := w.serviceCache.lookupService(context.Background(), key)
 
@@ -178,7 +178,7 @@ func (w *Watcher) handleChange(c chan *types.Change, e *discoveryv1.EndpointSlic
 		return
 	}
 	for _, domain := range svc.domains {
-		def := types.NewLoadBalancerDefinitionChange(domain, svc.healthCheckEndpoint, e)
+		def := types.NewLoadBalancerDefinitionChange(domain, svc.healthCheckEndpoint, oldEndpoint, newEndpoint)
 
 		if len(def.Obj.Servers) == 0 {
 			log.Warnf("endpoint %s changed but endpoint has 0 ready addresses", key)

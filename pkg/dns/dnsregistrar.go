@@ -15,14 +15,14 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-type CommandRegistrar struct {
+type DNSRegistrar struct {
 	address       string
 	addCommand    *template.Template
 	removeCommand *template.Template
 	knownDomains  types.Set[string]
 }
 
-func (c *CommandRegistrar) Add(domain string) error {
+func (c *DNSRegistrar) Add(domain string) error {
 	if c.knownDomains.Has(domain) {
 		log.Debugf("already know about %s, no action", domain)
 		return nil
@@ -37,7 +37,7 @@ func (c *CommandRegistrar) Add(domain string) error {
 	return nil
 }
 
-func (c *CommandRegistrar) Remove(domain string) error {
+func (c *DNSRegistrar) Remove(domain string) error {
 	if !c.knownDomains.Has(domain) {
 		return nil
 	}
@@ -51,7 +51,7 @@ func (c *CommandRegistrar) Remove(domain string) error {
 	return nil
 }
 
-func (c *CommandRegistrar) RemoveAll() error {
+func (c *DNSRegistrar) RemoveAll() error {
 	errors := make([]string, 0)
 	for domain := range c.knownDomains {
 		if err := c.executeTemplate(c.removeCommand, domain); err != nil {
@@ -66,7 +66,7 @@ func (c *CommandRegistrar) RemoveAll() error {
 	return nil
 }
 
-func (c *CommandRegistrar) executeTemplate(t *template.Template, domain string) error {
+func (c *DNSRegistrar) executeTemplate(t *template.Template, domain string) error {
 	var buf bytes.Buffer
 	if err := t.Execute(&buf, map[string]string{"domain": domain, "address": c.address}); err != nil {
 		return fmt.Errorf("unable to parse command string: %s", err.Error())
@@ -91,8 +91,8 @@ func run(command string) error {
 	return err
 }
 
-func NewCommandRegistrar(cfg *configuration.DNS) (*CommandRegistrar, error) {
-	c := &CommandRegistrar{
+func NewDNSRegistrar(cfg *configuration.DNS) (*DNSRegistrar, error) {
+	c := &DNSRegistrar{
 		address:      cfg.Address,
 		knownDomains: make(types.Set[string]),
 	}

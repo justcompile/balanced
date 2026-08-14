@@ -1,0 +1,25 @@
+config_version: 2
+name: e369e06d81bf
+mode: single
+status: ""
+dataplaneapi:
+  scheme:
+  - http
+  host: 0.0.0.0
+  port: 5555
+  userlist:
+    userlist: controller
+    userlist_file: ""
+  advertised:
+    api_address: ""
+    api_port: 0
+haproxy:
+  config_file: /usr/local/etc/haproxy/haproxy.cfg
+  haproxy_bin: /usr/local/sbin/haproxy
+  reload:
+    reload_delay: 5
+    reload_cmd: /package/admin/s6/command/s6-svc -2 /run/s6-rc/servicedirs/haproxy
+    restart_cmd: /package/admin/s6/command/s6-svc -r /run/s6-rc/servicedirs/haproxy
+    status_cmd: /package/admin/s6/command/s6-svstat -u /run/s6-rc/servicedirs/haproxy
+log_targets:
+- log_to: stdout

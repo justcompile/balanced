@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 
 	"k8s.io/client-go/util/homedir"
+	"k8s.io/utils/ptr"
 )
 
 var (
@@ -48,10 +49,32 @@ type DNS struct {
 }
 
 type LoadBalancer struct {
-	ReconcileDuration *time.Duration `toml:"sync-interval"`
-	ConfigDir         string         `toml:"config-dir"`
-	ReloadCmd         string         `toml:"reload-cmd"`
-	Template          string         `toml:"template"`
+	ConfigDir         string                  `toml:"config-dir"`
+	DataPlane         *HAProxyDataPlaneConfig `toml:"data-plane-api"`
+	ReconcileDuration *time.Duration          `toml:"sync-interval"`
+	ReloadCmd         string                  `toml:"reload-cmd"`
+	Template          string                  `toml:"template"`
+}
+
+func (lb LoadBalancer) UseDataPlaneAPI() bool {
+	if lb.DataPlane == nil {
+		return false
+	}
+
+	// default to true if the block has been defined but not explicitly enabled/disabled
+	if lb.DataPlane.Enabled == nil {
+		return true
+	}
+
+	return ptr.Deref(lb.DataPlane.Enabled, false)
+}
+
+type HAProxyDataPlaneConfig struct {
+	Enabled  *bool  `toml:"enabled"`
+	Endpoint string `toml:"endpoint"`
+	Version  string `toml:"api-version"`
+	Username string `toml:"username"`
+	Password string `toml:"password"`
 }
 
 type KubeConfig struct {

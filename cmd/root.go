@@ -2,8 +2,8 @@ package cmd
 
 import (
 	"balanced/pkg/configuration"
+	"balanced/pkg/controller"
 	"balanced/pkg/k8s"
-	"balanced/pkg/loadbalancer"
 	"os"
 	"os/signal"
 	"syscall"
@@ -23,9 +23,10 @@ var root = &cobra.Command{
 			log.Fatal(err)
 		}
 
-		lb, lbErr := loadbalancer.NewUpdater(cfg)
-		if lbErr != nil {
-			log.Fatal(lbErr)
+		ctrl, err := controller.NewController(cfg)
+
+		if err != nil {
+			log.Fatal(err)
 		}
 
 		w, err := k8s.NewWatcher(cfg.Kubernetes)
@@ -44,7 +45,7 @@ var root = &cobra.Command{
 		changes := w.Start(stop)
 
 		// Start update process listening to changes which come in
-		go lb.Start(changes)
+		go ctrl.Start(changes)
 
 		select {
 		case <-cmd.Context().Done():
@@ -52,7 +53,7 @@ var root = &cobra.Command{
 			close(changes)
 			stop <- struct{}{}
 			log.Println("stopping")
-			if err := lb.OnExit(); err != nil {
+			if err := ctrl.OnExit(); err != nil {
 				log.Errorln(err.Error())
 			}
 			time.Sleep(time.Second)

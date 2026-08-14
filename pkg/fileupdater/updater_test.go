@@ -1,4 +1,4 @@
-package loadbalancer
+package fileupdater
 
 import (
 	"balanced/pkg/configuration"
@@ -36,7 +36,7 @@ func testReadFile(fp string) string {
 	return string(data)
 }
 
-func TestUpdater_handleChange(t *testing.T) {
+func TestUpdater_Update(t *testing.T) {
 	templateText := `backend {{.Domain}}
   balance roundrobin
   {{range .Servers -}}
@@ -104,7 +104,7 @@ func TestUpdater_handleChange(t *testing.T) {
 			render: &Renderer{t: template.Must(template.New("foo").Parse(templateText))},
 		}
 
-		err := u.handleChange(test.change)
+		err := u.Update(test.change)
 
 		assert.Equal(t, test.expectedErr, err, name)
 		test.verify(name)

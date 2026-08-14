@@ -1,0 +1,11 @@
+services:
+  haproxy:
+    image: localhost/justcompile/haproxy-dataplane:2.6-alpine
+    ports:
+     - 8080:80
+     - 8443:443
+     - 5555:5555
+    volumes:
+      - ./dev/configs:/usr/local/etc/haproxy:rw
+    tmpfs:
+      - /run:exec

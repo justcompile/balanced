@@ -1,4 +1,4 @@
-package loadbalancer
+package fileupdater
 
 import (
 	"balanced/pkg/types"

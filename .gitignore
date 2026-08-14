@@ -19,3 +19,9 @@ balanced.toml
 
 dist/
 foobar/
+
+dev/configs/*
+
+# 2. But do not ignore this specific file
+!dev/configs/dataplaneapi.yml
+!dev/configs/haproxy.cfg
