@@ -8,6 +8,7 @@ service-annotation-load-balancer-id = "foobar-external"
 [loadbalancer]
 config-dir = "" # dir to store load balancer configuration
 reload-cmd = "systemctl reload haproxy" # command to reload loadbalancer configuration
+sync-interval = "5s"
 template = """
 backend {{.Domain}}
   http-check send meth GET uri {{.HealthCheck}} hdr Host {{.Domain}}
@@ -16,6 +17,13 @@ backend {{.Domain}}
   server {{.Id}} {{.IPAddress}}:{{.Port}} check check-ssl
   {{end}}
 """
+
+[loadbalancer.data-plane-api]
+enabled  = true
+endpoint = "http://localhost:5555"
+api-version = "v2"
+username = "..."
+password = "..."
 
 [dns]
 enabled = true|false

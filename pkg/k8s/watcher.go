@@ -84,7 +84,7 @@ func (w *Watcher) setup() chan *types.Change {
 	// when a service is updated, this would mean that an annotation may have been added/updated
 	// clear the domain mapping cache to ensure that it can be picked up
 	_, svcInformerErr := serviceInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
-		UpdateFunc: func(oldObj, newObj interface{}) {
+		UpdateFunc: func(oldObj, newObj any) {
 			svc := oldObj.(*corev1.Service)
 			if shouldWatchResource(w, svc) {
 				key := namespacedResourceToKey(svc)
@@ -99,7 +99,7 @@ func (w *Watcher) setup() chan *types.Change {
 				w.handleChange(c, nil, endpoint)
 			}
 		},
-		DeleteFunc: func(obj interface{}) {
+		DeleteFunc: func(obj any) {
 			svc := obj.(*corev1.Service)
 			if shouldWatchResource(w, svc) {
 				w.serviceCache.removeServiceRecord(context.Background(), namespacedResourceToKey(svc))
@@ -113,7 +113,7 @@ func (w *Watcher) setup() chan *types.Change {
 	}
 
 	_, endpointInformerErr := endpointsInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc: func(obj interface{}) {
+		AddFunc: func(obj any) {
 			endpoint := obj.(*discoveryv1.EndpointSlice)
 			if !shouldWatchResource(w, endpoint) {
 				log.Debugf("endpoint added but namespace %s is not being watched", endpoint.GetNamespace())
@@ -122,11 +122,11 @@ func (w *Watcher) setup() chan *types.Change {
 
 			w.handleChange(c, nil, endpoint)
 		},
-		DeleteFunc: func(obj interface{}) {
+		DeleteFunc: func(obj any) {
 			key := namespacedResourceToKey(obj.(*discoveryv1.EndpointSlice))
 			log.Infof("endpoint deleted: %s", key)
 		},
-		UpdateFunc: func(oldObj, newObj interface{}) {
+		UpdateFunc: func(oldObj, newObj any) {
 			oldEndpoint := oldObj.(*discoveryv1.EndpointSlice)
 			newEndpoint := newObj.(*discoveryv1.EndpointSlice)
 

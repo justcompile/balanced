@@ -14,10 +14,6 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-const (
-	retryAttempts = 3
-)
-
 type Updater struct {
 	cfg            *configuration.Config
 	render         *Renderer

@@ -75,7 +75,7 @@ func (d *DataPlaneAPIClient) GetOrCreateBackend(def *types.LoadBalancerUpstreamD
 
 	if status == http.StatusNotFound {
 		log.Infof("backend for %s does not exist, createding", def.Domain)
-		backend, status, err = d.createBackend(def)
+		backend, _, err = d.createBackend(def)
 	}
 
 	if err != nil {
